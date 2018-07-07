@@ -3,7 +3,6 @@ import numpy as np
 import time
 import datetime
 import os
-import networkx as nx
 from networkx.algorithms.flow import shortest_augmenting_path
 import pytz
 
@@ -79,10 +78,14 @@ def get_annotation_type_from_table_id(table_id):
 class AnnotationMetaDB(object):
     """ Manages annotations from all types """
 
-    def __init__(self, client, instance_id='pychunkedgraph'):
+    def __init__(self, client=None, instance_id='pychunkedgraph'
+                 project_id="neuromancer-seung-import"):
 
-        self._client = client
-
+        if client is not None:
+            self._client = client
+        else:
+            self._client = bigtable.Client(project=project_id, admin=True)
+            
         self._instance = self.client.instance(instance_id)
 
         self._loaded_tables = {}
