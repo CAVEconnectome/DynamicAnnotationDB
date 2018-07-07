@@ -75,9 +75,9 @@ def get_annotation_type_from_table_id(table_id):
 
 
 class AnnotationMetaDB(object):
-    """ Manages annotations from all types """
+    """ Manages annotations from all types and datasets """
 
-    def __init__(self, client=None, instance_id='pychunkedgraph'
+    def __init__(self, client=None, instance_id='pychunkedgraph',
                  project_id="neuromancer-seung-import"):
 
         if client is not None:
