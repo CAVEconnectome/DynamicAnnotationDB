@@ -78,12 +78,11 @@ def get_annotation_type_from_table_id(table_id):
 
 class AnnotationMetaDB(object):
     """ Manages annotations from all types """
-    def __init__(self, instance_id="pychunkedgraph",
-                 project_id="neuromancer-seung-import",
-                 credentials=None):
 
-        self._client = bigtable.Client(project=project_id, admin=True,
-                                       credentials=credentials)
+    def __init__(self, client, instance_id='pychunkedgraph'):
+
+        self._client = client
+
         self._instance = self.client.instance(instance_id)
 
         self._loaded_tables = {}
@@ -144,7 +143,7 @@ class AnnotationMetaDB(object):
         :return: list
         """
         tables = self.instance.list_tables()
-
+        print('tables',[table.name for table in tables])
         annotation_tables = []
         for table in tables:
             table_name = table.name.split("/")[-1]
@@ -165,7 +164,8 @@ class AnnotationMetaDB(object):
         annotation_types = []
         for table_name in annotation_tables:
             if table_name.startswith("anno__%s" % dataset_name):
-                annotation_types.append(get_annotation_type_from_table_id(table_name))
+                annotation_types.append(
+                    get_annotation_type_from_table_id(table_name))
 
         return annotation_types
 
@@ -337,6 +337,7 @@ class AnnotationMetaDB(object):
 
 class AnnotationDB(object):
     """ Manages annotations from a single annotation type and dataset """
+
     def __init__(self, table_id, instance_id="pychunkedgraph",
                  project_id="neuromancer-seung-import", client=None,
                  instance=None, credentials=None, is_new=False):
@@ -693,7 +694,8 @@ class AnnotationDB(object):
         # Commit increments the row entry and returns the value AFTER
         # incrementing
         latest_row = append_row.commit()
-        latest_row_entry = latest_row[self.incrementer_family_id][serialize_key('counter')][0][0]
+        latest_row_entry = latest_row[self.incrementer_family_id][serialize_key(
+            'counter')][0][0]
 
         operation_id = "op%d" % int.from_bytes(latest_row_entry,
                                                byteorder="big")
@@ -723,7 +725,7 @@ class AnnotationDB(object):
         return m_row
 
     def _remove_annotation_from_mapping(self, annotation_id, sv_id,
-                                       time_stamp=None):
+                                        time_stamp=None):
         if annotation_id not in self.get_annotation_ids_from_sv(sv_id):
             return None
 
@@ -764,7 +766,7 @@ class AnnotationDB(object):
 
     def _update_annotation(self, annotation_id, annotation_data, sv_ids,
                            time_stamp=None):
-        #TODO: get lock
+        # TODO: get lock
 
         # Get old sv ids
         old_sv_ids = self.get_annotation_sv_ids(annotation_id)
@@ -794,7 +796,7 @@ class AnnotationDB(object):
         return rows
 
     def _delete_annotation(self, annotation_id, time_stamp=None):
-        #TODO: get lock
+        # TODO: get lock
 
         # Get old sv ids
         old_sv_ids = self.get_annotation_sv_ids(annotation_id)
@@ -868,7 +870,7 @@ class AnnotationDB(object):
         time_stamp = datetime.datetime.now()
         time_stamp = UTC.localize(time_stamp)
 
-        #TODO: lock
+        # TODO: lock
 
         rows = []
         success_marker = []
@@ -905,7 +907,7 @@ class AnnotationDB(object):
         time_stamp = datetime.datetime.now()
         time_stamp = UTC.localize(time_stamp)
 
-        #TODO: lock
+        # TODO: lock
 
         rows = []
         success_marker = []
@@ -956,14 +958,16 @@ class AnnotationDB(object):
         time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
 
         # Read mapped entries with time_stamp
-        row = self.table.read_row(serialize_node_id(sv_id), filter_=time_filter)
+        row = self.table.read_row(
+            serialize_node_id(sv_id), filter_=time_filter)
 
         print(sv_id, row)
 
         if row is None:
             return []
 
-        anno_id_entries = row.cells[self.mapping_family_id][serialize_key("mapped_anno_ids")]
+        anno_id_entries = row.cells[self.mapping_family_id][serialize_key(
+            "mapped_anno_ids")]
         anno_ids = []
         for entry in anno_id_entries:
             anno_ids.append(np.frombuffer(entry.value, dtype=np.uint64))
@@ -985,7 +989,8 @@ class AnnotationDB(object):
         :param time_stamp: None or datetime
         :return: blob
         """
-        bin_data = self.table.read_row(serialize_node_id(annotation_id)).cells[self.data_family_id][serialize_key("data")][0].value
+        bin_data = self.table.read_row(serialize_node_id(
+            annotation_id)).cells[self.data_family_id][serialize_key("data")][0].value
 
         if len(bin_data) == 0:
             return None
@@ -1007,16 +1012,19 @@ class AnnotationDB(object):
             time_stamp = UTC.localize(time_stamp)
 
         # Adjust time_stamp to bigtable precision
-        time_stamp -= datetime.timedelta(microseconds=time_stamp.microsecond % 1000)
+        time_stamp -= datetime.timedelta(
+            microseconds=time_stamp.microsecond % 1000)
 
         time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
 
-        row = self.table.read_row(serialize_node_id(annotation_id), filter_=time_filter)
+        row = self.table.read_row(serialize_node_id(
+            annotation_id), filter_=time_filter)
 
         if row is None:
             return []
 
-        sv_ids_bin = row.cells[self.data_family_id][serialize_key("sv_ids")][0].value
+        sv_ids_bin = row.cells[self.data_family_id][serialize_key(
+            "sv_ids")][0].value
 
         if len(sv_ids_bin) == 0:
             return None
@@ -1044,4 +1052,3 @@ class AnnotationDB(object):
             annotation_dict[annotation_id] = self.get_annotation(annotation_id)
 
         return annotation_dict
-
