@@ -15,7 +15,6 @@ setup(
     packages=find_packages(),
     install_requires=[
         "google-cloud-bigtable",
-        "networkx",
         "pytz"
     ],
     classifiers=(
