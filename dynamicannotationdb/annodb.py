@@ -714,39 +714,30 @@ class AnnotationDB(object):
 
         return row
 
-    def _write_sv_mapping(self, sv_mapping_dict, time_stamp=None):
+    def _write_sv_mapping(self, sv_mapping_dict, time_stamp=None, add=True,
+                          is_new=True):
         rows = []
 
         for sv_id in sv_mapping_dict.keys():
+            if not is_new:
+                mapped_anno_ids = self.get_annotation_ids_from_sv(sv_id)
+
+                relevant_anno_ids = []
+                for anno_id in sv_mapping_dict[sv_id]:
+                    if add and anno_id not in mapped_anno_ids:
+                       relevant_anno_ids.append(anno_id)
+                    elif not add and anno_id in mapped_anno_ids:
+                       relevant_anno_ids.append(anno_id)
+            else:
+                relevant_anno_ids = sv_mapping_dict[sv_id]
+
+            relevant_anno_ids_bin = np.array(relevant_anno_ids,
+                                             dtype=np.uint64).tobytes()
             rows.append(self._mutate_row(serialize_node_id(sv_id),
                                          self.mapping_family_id,
-                                         {"mapped_anno_ids": np.array(sv_mapping_dict[sv_id],
-                                                                      dtype=np.uint64).tobytes()},
+                                         {"mapped_anno_ids": relevant_anno_ids_bin},
                                          time_stamp=time_stamp))
         return rows
-
-    def _add_annotations_to_mapping(self, annotation_id, sv_id, is_new=False,
-                                    time_stamp=None):
-        if not is_new:
-            if annotation_id in self.get_annotation_ids_from_sv(sv_id):
-                return None
-
-        m_row = self._mutate_row(serialize_node_id(sv_id),
-                                 self.mapping_family_id,
-                                 {"mapped_anno_ids": annotation_id.tobytes()},
-                                 time_stamp=time_stamp)
-        return m_row
-
-    def _remove_annotation_from_mapping(self, annotation_id, sv_id,
-                                        time_stamp=None):
-        if annotation_id not in self.get_annotation_ids_from_sv(sv_id):
-            return None
-
-        m_row = self._mutate_row(serialize_node_id(sv_id),
-                                 self.mapping_family_id,
-                                 {"mapped_anno_ids": annotation_id.tobytes()},
-                                 time_stamp=time_stamp)
-        return m_row
 
     def _write_annotation_data(self, annotation_id, annotation_data, sv_ids,
                                time_stamp=None):
@@ -758,60 +749,6 @@ class AnnotationDB(object):
                                  time_stamp=time_stamp)
 
         return m_row
-
-    def _update_annotation(self, annotation_id, annotation_data, sv_ids,
-                           time_stamp=None):
-        # TODO: get lock
-
-        # Get old sv ids
-        old_sv_ids = self.get_annotation_sv_ids(annotation_id)
-
-        if len(old_sv_ids) < len(sv_ids):
-            return []
-
-        # Write data
-        rows = [self._write_annotation_data(annotation_id, annotation_data,
-                                            sv_ids)]
-
-        # Write mapping
-        changed_sv_id_mask = old_sv_ids != sv_ids
-
-        for old_sv_id, sv_id in zip(old_sv_ids[changed_sv_id_mask],
-                                    sv_ids[changed_sv_id_mask]):
-            old_row = self._remove_annotation_from_mapping(annotation_id,
-                                                           old_sv_id,
-                                                           time_stamp=time_stamp)
-            old_row.commit()
-
-            map_row = self._add_annotation_to_mapping(annotation_id, sv_id,
-                                                      is_new=False,
-                                                      time_stamp=time_stamp)
-            map_row.commit()
-
-        return rows
-
-    def _delete_annotation(self, annotation_id, time_stamp=None):
-        # TODO: get lock
-
-        # Get old sv ids
-        old_sv_ids = self.get_annotation_sv_ids(annotation_id)
-
-        if len(old_sv_ids) == 0:
-            return []
-
-        # Write data
-        rows = [self._write_annotation_data(annotation_id,
-                                            np.array([]).tobytes(),
-                                            np.array([]))]
-
-        # Write mapping
-        for old_sv_id in old_sv_ids:
-            old_row = self._remove_annotation_from_mapping(annotation_id,
-                                                           old_sv_id,
-                                                           time_stamp=time_stamp)
-            old_row.commit()
-
-        return rows
 
     def insert_annotations(self, annotations, user_id, bulk_block_size=10):
         """ Inserts new annotations into the database and returns assigned ids
@@ -867,7 +804,8 @@ class AnnotationDB(object):
 
         return anno_ids
 
-    def delete_annotations(self, annotation_ids, user_id):
+    def delete_annotations(self, annotation_ids, user_id,
+                           bulk_block_size=10000):
         """ Deletes annotations from the database
 
         :param annotation_ids: list of uint64s
@@ -884,33 +822,50 @@ class AnnotationDB(object):
 
         rows = []
         success_marker = []
+        sv_mapping_dict = collections.defaultdict(list)
 
         for annotation_id in annotation_ids:
-            new_rows = self._delete_annotation(annotation_id,
-                                               time_stamp=time_stamp)
+            old_sv_ids = self.get_annotation_sv_ids(annotation_id)
 
-            if len(new_rows) > 0:
-                success_marker.append(True)
-            else:
+            if len(old_sv_ids) == 0:
                 success_marker.append(False)
+                continue
 
-            rows.extend(new_rows)
+            for sv_id in np.unique(old_sv_ids):
+                sv_mapping_dict[sv_id].append(annotation_id)
 
-            if len(rows) >= 5000:
+            rows = [self._write_annotation_data(annotation_id,
+                                                np.array([]).tobytes(),
+                                                np.array([]),
+                                                time_stamp=time_stamp)]
+
+            success_marker.append(True)
+
+            if len(rows) >= bulk_block_size / 2:
+                rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
+                                                   is_new=False))
+
                 self._bulk_write(rows)
+
+                sv_mapping_dict = collections.defaultdict(list)
                 rows = []
 
-        if len(rows) > 0:
+        if len(rows) >= bulk_block_size / 2:
+            rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
+                                               is_new=False))
+
             self._bulk_write(rows)
 
         return success_marker
 
-    def update_annotations(self, annotations, user_id):
+    def update_annotations(self, annotations, user_id,
+                           bulk_block_size=10000):
         """ Updates existing annotations
 
-        :param annotations: list
+        :param annotation_ids: list of uint64s
+            annotations (key: annotation id)
         :param user_id: str
-        :return: list of bools
+        :return: bool
             success
         """
 
@@ -921,24 +876,55 @@ class AnnotationDB(object):
 
         rows = []
         success_marker = []
+        new_sv_mapping_dict = collections.defaultdict(list)
+        old_sv_mapping_dict = collections.defaultdict(list)
 
         for annotation in annotations:
             annotation_id, sv_ids, annotation_data = annotation
-            new_rows = self._update_annotation(annotation_id, annotation_data,
-                                               sv_ids, time_stamp=time_stamp)
 
-            if len(new_rows) > 0:
-                success_marker.append(True)
-            else:
+            old_sv_ids = self.get_annotation_sv_ids(annotation_id)
+
+            if len(old_sv_ids) == 0:
                 success_marker.append(False)
+                continue
 
-            rows.extend(new_rows)
+            sv_id_mask = old_sv_ids != sv_ids
 
-            if len(rows) >= 5000:
+            for sv_id in np.unique(sv_ids[sv_id_mask]):
+                new_sv_mapping_dict[sv_id].append(annotation_id)
+
+            for sv_id in np.unique(old_sv_ids[sv_id_mask]):
+                old_sv_mapping_dict[sv_id].append(annotation_id)
+
+            rows = [self._write_annotation_data(annotation_id,
+                                                sv_ids.tobytes(),
+                                                annotation_data,
+                                                time_stamp=time_stamp)]
+
+            success_marker.append(True)
+
+            if len(rows) >= bulk_block_size / 3:
+                rows.extend(self._write_sv_mapping(old_sv_mapping_dict,
+                                                   add=False,
+                                                   is_new=False))
+                rows.extend(self._write_sv_mapping(new_sv_mapping_dict,
+                                                   add=True,
+                                                   is_new=False))
+
                 self._bulk_write(rows)
+
+                new_sv_mapping_dict = collections.defaultdict(list)
+                old_sv_mapping_dict = collections.defaultdict(list)
                 rows = []
 
-        if len(rows) > 0:
+        if len(rows) >= bulk_block_size / 2:
+            rows.extend(self._write_sv_mapping(old_sv_mapping_dict,
+                                               add=False,
+                                               is_new=False))
+            rows.extend(self._write_sv_mapping(new_sv_mapping_dict,
+                                               add=True,
+                                               is_new=False))
+
             self._bulk_write(rows)
 
         return success_marker
