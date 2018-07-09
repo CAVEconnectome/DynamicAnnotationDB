@@ -192,6 +192,26 @@ class AnnotationMetaDB(object):
         else:
             return False
 
+    def _delete_table(self, dataset_name, annotation_type):
+        """ Creates new table
+
+        :param dataset_name: str
+        :param annotation_type: str
+        :return: bool
+            success
+        """
+        table_id = build_table_id(dataset_name, annotation_type)
+
+        if table_id not in self.get_existing_tables():
+            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
+                                                         client=self.client,
+                                                         instance=self.instance,
+                                                         is_new=True)
+            self._loaded_tables[table_id].delete()
+            return True
+        else:
+            return False
+
     def insert_annotations(self, dataset_name, annotation_type, annotations,
                            user_id):
         """ Inserts new annotations into the database and returns assigned ids
@@ -276,8 +296,8 @@ class AnnotationMetaDB(object):
 
         return self._loaded_tables[table_id].get_annotation_ids_from_sv(sv_id, time_stamp=time_stamp)
 
-    def get_annotation(self, dataset_name, annotation_type, annotation_id,
-                       time_stamp=None):
+    def get_annotation_data(self, dataset_name, annotation_type, annotation_id,
+                            time_stamp=None):
         """ Reads the data of a single annotation object
 
         :param dataset_name: str
@@ -285,6 +305,25 @@ class AnnotationMetaDB(object):
         :param annotation_id: uint64
         :param time_stamp: None or datetime
         :return: blob
+        """
+        table_id = build_table_id(dataset_name, annotation_type)
+
+        if not self._load_table(table_id):
+            print("Cannot load table")
+            return None
+
+        return self._loaded_tables[table_id].get_annotation_data(annotation_id,
+                                                                 time_stamp=time_stamp)
+
+    def get_annotation(self, dataset_name, annotation_type, annotation_id,
+                       time_stamp=None):
+        """ Reads the data and sv_ids of a single annotation object
+
+        :param dataset_name: str
+        :param annotation_type: str
+        :param annotation_id: uint64
+        :param time_stamp: None or datetime
+        :return: blob, list of np.uint64
         """
         table_id = build_table_id(dataset_name, annotation_type)
 
@@ -334,6 +373,24 @@ class AnnotationMetaDB(object):
             return None
 
         return self._loaded_tables[table_id].get_annotations_from_sv(sv_id, time_stamp=time_stamp)
+
+    def get_max_annotation_id(self, dataset_name, annotation_type):
+        """ Returns an upper limit on the annotation id in the table
+
+        There is no guarantee that the returned id itself exists. It is only
+        guaranteed that no larger id exists.
+
+        :param dataset_name: str
+        :param annotation_type: str
+        :return: np.uint64
+        """
+        table_id = build_table_id(dataset_name, annotation_type)
+
+        if not self._load_table(table_id):
+            print("Cannot load table")
+            return None
+
+        return self._loaded_tables[table_id].get_max_annotation_id()
 
 
 class AnnotationDB(object):
@@ -678,6 +735,23 @@ class AnnotationDB(object):
 
         return np.uint64(annotation_id)
 
+    def get_max_annotation_id(self):
+        """ Return unique Node ID for given Chunk ID
+
+        atomic counter
+
+        :return: uint64
+        """
+
+        # Incrementer row keys start with an "i"
+        row_key = serialize_key("iannotations")
+        row = self.table.read_row(row_key)
+
+        # Read incrementer value
+        annotation_id = int.from_bytes(row.cells[self.incrementer_family_id][serialize_key('counter')][0].value, byteorder="big")
+
+        return np.uint64(annotation_id)
+
     def _get_unique_operation_id(self):
         """ Finds a unique operation id
 
@@ -977,22 +1051,41 @@ class AnnotationDB(object):
         return anno_ids
 
     def get_annotation(self, annotation_id, time_stamp=None):
-        """ Reads the data of a single annotation object
+        """ Reads the data and sv_ids of a single annotation object
 
         :param annotation_id: uint64
         :param time_stamp: None or datetime
-        :return: blob
+        :return: blob, list of np.uint64
         """
-        bin_data = self.table.read_row(serialize_node_id(
-            annotation_id)).cells[self.data_family_id][serialize_key("data")][0].value
+
+        if time_stamp is None:
+            time_stamp = datetime.datetime.utcnow()
+
+        # Adjust time_stamp to bigtable precision
+        time_stamp -= datetime.timedelta(
+            microseconds=time_stamp.microsecond % 1000)
+
+        time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
+
+        row = self.table.read_row(serialize_node_id(annotation_id),
+                                  filter_=time_filter)
+
+        bin_data = row.cells[self.data_family_id][serialize_key("data")][0].value
 
         if len(bin_data) == 0:
-            return None
+            return None, None
 
-        return bin_data
+        sv_ids_bin = row.cells[self.data_family_id][serialize_key("sv_ids")][0].value
 
-    def get_annotation_sv_ids(self, annotation_id, time_stamp=None):
-        """ Reads the sv ids belonging to an annotation
+        if len(sv_ids_bin) == 0:
+            return None, None
+
+        sv_ids = np.frombuffer(sv_ids_bin, dtype=np.uint64)
+
+        return bin_data, sv_ids
+
+    def get_annotation_data(self, annotation_id, time_stamp=None):
+        """ Reads the data of a single annotation object
 
         :param annotation_id: uint64
         :param time_stamp: None or datetime
@@ -1008,8 +1101,35 @@ class AnnotationDB(object):
 
         time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
 
-        row = self.table.read_row(serialize_node_id(
-            annotation_id), filter_=time_filter)
+        row = self.table.read_row(serialize_node_id(annotation_id),
+                                  filter_=time_filter)
+
+        bin_data = row.cells[self.data_family_id][serialize_key("data")][0].value
+
+        if len(bin_data) == 0:
+            return None
+
+        return bin_data
+
+    def get_annotation_sv_ids(self, annotation_id, time_stamp=None):
+        """ Reads the sv ids belonging to an annotation
+
+        :param annotation_id: uint64
+        :param time_stamp: None or datetime
+        :return: list of np.uint64s
+        """
+
+        if time_stamp is None:
+            time_stamp = datetime.datetime.utcnow()
+
+        # Adjust time_stamp to bigtable precision
+        time_stamp -= datetime.timedelta(
+            microseconds=time_stamp.microsecond % 1000)
+
+        time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
+
+        row = self.table.read_row(serialize_node_id(annotation_id),
+                                  filter_=time_filter)
 
         if row is None:
             return []
@@ -1017,8 +1137,7 @@ class AnnotationDB(object):
         # for entry in row.cells[self.data_family_id][serialize_key("sv_ids")]:
         #     print(entry.timestamp)
 
-        sv_ids_bin = row.cells[self.data_family_id][serialize_key(
-            "sv_ids")][0].value
+        sv_ids_bin = row.cells[self.data_family_id][serialize_key("sv_ids")][0].value
 
         if len(sv_ids_bin) == 0:
             return None
@@ -1030,7 +1149,8 @@ class AnnotationDB(object):
     def get_annotations_from_sv(self, sv_id, time_stamp=None):
         """ Collects the data from all annotations associated with a supervoxel
 
-        This function chains `get_annotation_ids_from_sv` and `get_annotation`
+        This function chains `get_annotation_ids_from_sv` and
+        `get_annotation_data`
 
         :param sv_id: uint64
         :param time_stamp: None or datetime
@@ -1043,6 +1163,6 @@ class AnnotationDB(object):
 
         annotation_dict = {}
         for annotation_id in annotation_ids:
-            annotation_dict[annotation_id] = self.get_annotation(annotation_id)
+            annotation_dict[annotation_id] = self.get_annotation_data(annotation_id)
 
         return annotation_dict
