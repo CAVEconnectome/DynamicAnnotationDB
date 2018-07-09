@@ -835,7 +835,7 @@ class AnnotationDB(object):
                 sv_mapping_dict[sv_id].append(annotation_id)
 
             rows = [self._write_annotation_data(annotation_id,
-                                                np.array([]).tobytes(),
+                                                np.array([]),
                                                 np.array([]),
                                                 time_stamp=time_stamp)]
 
@@ -897,7 +897,7 @@ class AnnotationDB(object):
                 old_sv_mapping_dict[sv_id].append(annotation_id)
 
             rows = [self._write_annotation_data(annotation_id,
-                                                sv_ids.tobytes(),
+                                                sv_ids,
                                                 annotation_data,
                                                 time_stamp=time_stamp)]
 
