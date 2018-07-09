@@ -20,7 +20,6 @@ from google.cloud.bigtable.column_family import MaxVersionsGCRule
 HOME = os.path.expanduser("~")
 N_DIGITS_UINT64 = len(str(np.iinfo(np.uint64).max))
 LOCK_EXPIRED_TIME_DELTA = datetime.timedelta(minutes=3, seconds=00)
-UTC = pytz.UTC
 
 # Setting environment wide credential path
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = \
@@ -573,7 +572,7 @@ class AnnotationDB(object):
         # LOCK_EXPIRED_TIME_DELTA) and if the given operation_id is still
         # the active lock holder
 
-        time_cutoff = datetime.datetime.now(UTC) - LOCK_EXPIRED_TIME_DELTA
+        time_cutoff = datetime.datetime.utcnow() - LOCK_EXPIRED_TIME_DELTA
 
         # Comply to resolution of BigTables TimeRange
         time_cutoff -= datetime.timedelta(
@@ -760,8 +759,7 @@ class AnnotationDB(object):
             assigned ids (in same order as `annotations`)
         """
 
-        time_stamp = datetime.datetime.now()
-        time_stamp = UTC.localize(time_stamp)
+        time_stamp = datetime.datetime.utcnow()
 
         rows = []
         sv_mapping_dict = collections.defaultdict(list)
@@ -815,8 +813,7 @@ class AnnotationDB(object):
             success
         """
 
-        time_stamp = datetime.datetime.now()
-        time_stamp = UTC.localize(time_stamp)
+        time_stamp = datetime.datetime.utcnow()
 
         # TODO: lock
 
@@ -869,8 +866,7 @@ class AnnotationDB(object):
             success
         """
 
-        time_stamp = datetime.datetime.now()
-        time_stamp = UTC.localize(time_stamp)
+        time_stamp = datetime.datetime.utcnow()
 
         # TODO: lock
 
@@ -883,6 +879,10 @@ class AnnotationDB(object):
             annotation_id, sv_ids, annotation_data = annotation
 
             old_sv_ids = self.get_annotation_sv_ids(annotation_id)
+
+            if old_sv_ids is None:
+                success_marker.append(False)
+                continue
 
             if len(old_sv_ids) == 0:
                 success_marker.append(False)
@@ -944,9 +944,6 @@ class AnnotationDB(object):
         if time_stamp is None:
             time_stamp = datetime.datetime.utcnow()
 
-        if time_stamp.tzinfo is None:
-            time_stamp = UTC.localize(time_stamp)
-
         # Adjust time_stamp to bigtable precision
         time_stamp -= datetime.timedelta(
             microseconds=time_stamp.microsecond % 1000)
@@ -1003,9 +1000,6 @@ class AnnotationDB(object):
         if time_stamp is None:
             time_stamp = datetime.datetime.utcnow()
 
-        if time_stamp.tzinfo is None:
-            time_stamp = UTC.localize(time_stamp)
-
         # Adjust time_stamp to bigtable precision
         time_stamp -= datetime.timedelta(
             microseconds=time_stamp.microsecond % 1000)
@@ -1017,6 +1011,9 @@ class AnnotationDB(object):
 
         if row is None:
             return []
+
+        for entry in row.cells[self.data_family_id][serialize_key("sv_ids")]:
+            print(entry.timestamp)
 
         sv_ids_bin = row.cells[self.data_family_id][serialize_key(
             "sv_ids")][0].value
