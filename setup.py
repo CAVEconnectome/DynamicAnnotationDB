@@ -14,7 +14,7 @@ setup(
     url="https://github.com/seung-lab/DynamicAnnotationDB",
     packages=find_packages(),
     install_requires=[
-        "google-cloud-bigtable==0.29",
+        "google-cloud-bigtable==0.28.1",
         "pytz"
     ],
     classifiers=(
