@@ -824,6 +824,10 @@ class AnnotationDB(object):
         for annotation_id in annotation_ids:
             old_sv_ids = self.get_annotation_sv_ids(annotation_id)
 
+            if old_sv_ids is None:
+                success_marker.append(False)
+                continue
+
             if len(old_sv_ids) == 0:
                 success_marker.append(False)
                 continue
@@ -954,8 +958,6 @@ class AnnotationDB(object):
         row = self.table.read_row(
             serialize_node_id(sv_id), filter_=time_filter)
 
-        print(sv_id, row)
-
         if row is None:
             return []
 
@@ -963,7 +965,7 @@ class AnnotationDB(object):
             "mapped_anno_ids")]
         anno_ids = []
         for entry in anno_id_entries:
-            print(len(np.frombuffer(entry.value, dtype=np.uint64)))
+            # print(len(np.frombuffer(entry.value, dtype=np.uint64)))
             anno_ids.extend(np.frombuffer(entry.value, dtype=np.uint64))
 
         # Resolve changes over time
@@ -1012,8 +1014,8 @@ class AnnotationDB(object):
         if row is None:
             return []
 
-        for entry in row.cells[self.data_family_id][serialize_key("sv_ids")]:
-            print(entry.timestamp)
+        # for entry in row.cells[self.data_family_id][serialize_key("sv_ids")]:
+        #     print(entry.timestamp)
 
         sv_ids_bin = row.cells[self.data_family_id][serialize_key(
             "sv_ids")][0].value
