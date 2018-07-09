@@ -897,8 +897,8 @@ class AnnotationDB(object):
                 old_sv_mapping_dict[sv_id].append(annotation_id)
 
             rows = [self._write_annotation_data(annotation_id,
-                                                sv_ids,
                                                 annotation_data,
+                                                sv_ids,
                                                 time_stamp=time_stamp)]
 
             success_marker.append(True)
