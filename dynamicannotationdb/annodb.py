@@ -850,7 +850,7 @@ class AnnotationDB(object):
                 sv_mapping_dict = collections.defaultdict(list)
                 rows = []
 
-        if len(rows) >= bulk_block_size / 2:
+        if len(rows) > 0:
             rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
                                                is_new=False))
 
