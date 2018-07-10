@@ -842,7 +842,6 @@ class AnnotationDB(object):
 
         i = 0
         for annotation in annotations:
-            print(i, end="\r")
             i += 1
 
             sv_ids, annotation_data = annotation
