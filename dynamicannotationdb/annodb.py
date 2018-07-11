@@ -219,7 +219,7 @@ class AnnotationMetaDB(object):
         :param dataset_name: str
         :param annotation_type: str
         :param annotations: list of tuples
-             [(sv_ids, serialized data, user_id), ...]
+             [(sv_ids, serialized data), ...]
         :param user_id: str
         :return: list of uint64
             assigned ids (in same order as `annotations`)
