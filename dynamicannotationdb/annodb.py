@@ -77,13 +77,14 @@ class AnnotationMetaDB(object):
     """ Manages annotations from all types and datasets """
 
     def __init__(self, client=None, instance_id='pychunkedgraph',
-                 project_id="neuromancer-seung-import"):
+                 project_id="neuromancer-seung-import", credentials=None):
 
         if client is not None:
             self._client = client
         else:
-            self._client = bigtable.Client(project=project_id, admin=True)
-            
+            self._client = bigtable.Client(project=project_id, admin=True,
+                                           credentials=credentials)
+
         self._instance = self.client.instance(instance_id)
 
         self._loaded_tables = {}
@@ -95,6 +96,14 @@ class AnnotationMetaDB(object):
     @property
     def instance(self):
         return self._instance
+
+    @property
+    def instance_id(self):
+        return self.instance.instance_id
+
+    @property
+    def project_id(self):
+        return self.client.project
 
     def _is_loaded(self, table_id):
         """ Checks whether table_id is in _loaded_tables
@@ -123,6 +132,17 @@ class AnnotationMetaDB(object):
         else:
             print("Table id does not exist")
             return False
+
+    def get_serialized_info(self):
+        """ Rerturns dictionary that can be used to load this AnnotationMetaDB
+
+        :return: dict
+        """
+        amdb_info = {"instance_id": self.instance_id,
+                     "project_id": self.project_id,
+                     "credentials": self.client.credentials}
+
+        return amdb_info
 
     def has_table(self, dataset_name, annotation_type):
         """Checks whether a table exists in the database
@@ -748,7 +768,10 @@ class AnnotationDB(object):
         row = self.table.read_row(row_key)
 
         # Read incrementer value
-        annotation_id = int.from_bytes(row.cells[self.incrementer_family_id][serialize_key('counter')][0].value, byteorder="big")
+        if row is not None:
+            annotation_id = int.from_bytes(row.cells[self.incrementer_family_id][serialize_key('counter')][0].value, byteorder="big")
+        else:
+            annotation_id = 0
 
         return np.uint64(annotation_id)
 
