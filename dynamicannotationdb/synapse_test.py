@@ -5,7 +5,7 @@ import os
 HOME = os.path.expanduser("~")
 
 
-def load_synapses(path=HOME + "/Downloads/pinky40_run2_remapped.df"):
+def load_synapses(path=HOME + "/pinky40_run2_remapped.df"):
     """ Cheap test scenario using real synapses """
 
     df = pd.read_csv(path)
