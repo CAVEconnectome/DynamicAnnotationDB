@@ -213,7 +213,7 @@ class AnnotationMetaDB(object):
             return False
 
     def _delete_table(self, dataset_name, annotation_type):
-        """ Creates new table
+        """ Deletes a table
 
         :param dataset_name: str
         :param annotation_type: str
@@ -222,12 +222,13 @@ class AnnotationMetaDB(object):
         """
         table_id = build_table_id(dataset_name, annotation_type)
 
-        if table_id not in self.get_existing_tables():
+        if table_id in self.get_existing_tables():
             self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
                                                          client=self.client,
                                                          instance=self.instance,
                                                          is_new=True)
-            self._loaded_tables[table_id].delete()
+            self._loaded_tables[table_id].table.delete()
+            del self._loaded_tables[table_id]
             return True
         else:
             return False
