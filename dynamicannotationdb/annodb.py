@@ -374,6 +374,23 @@ class AnnotationMetaDB(object):
 
         return self._loaded_tables[table_id].get_annotation_sv_ids(annotation_id, time_stamp=time_stamp)
 
+    def get_annotations_from_sv_ids(self, dataset_name, annotation_type, sv_ids, time_stamp=None):
+        """ Collects the data from all annotations asociated with a set of supervoxels
+
+        This function wraps `get_annotation_from_sv`
+
+        :param dataset_name: str
+        :param annotation_type: str
+        :param sv_ids: list[uint64]
+        :param time_stamp: None or datetime
+        :return: list
+            annotations
+        """
+        annotations = []
+        for sv_id in sv_ids:
+            annotations += self.get_annotations_from_sv(dataset_name, annotation_type, sv_id, time_stamp=time_stamp)
+        return annotations
+        
     def get_annotations_from_sv(self, dataset_name, annotation_type, sv_id,
                                 time_stamp=None):
         """ Collects the data from all annotations associated with a supervoxel
