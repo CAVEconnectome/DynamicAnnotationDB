@@ -1118,7 +1118,7 @@ class AnnotationDB(object):
         sv_ids_bin = row.cells[self.data_family_id][serialize_key("sv_ids")][0].value
 
         if len(sv_ids_bin) == 0:
-            return None, None
+            return bin_data, None
 
         sv_ids = np.frombuffer(sv_ids_bin, dtype=np.uint64)
 
