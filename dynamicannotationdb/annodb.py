@@ -233,6 +233,29 @@ class AnnotationMetaDB(object):
         else:
             return False
 
+    def _reset_table(self, dataset_name, annotation_type, n_retries=20,
+                     delay_s=5):
+        """ Deletes and creates table
+
+        :param dataset_name: str
+        :param annotation_type: str
+        :return: bool
+        """
+
+        if self._delete_table(dataset_name=dataset_name,
+                              annotation_type=annotation_type):
+            for i_try in range(n_retries):
+                time.sleep(delay_s)
+                try:
+                    if self.create_table(dataset_name=dataset_name,
+                                         annotation_type=annotation_type):
+                        return True
+                except:
+                    time.sleep(delay_s)
+            return False
+        else:
+            return False
+
     def insert_annotations(self, dataset_name, annotation_type, annotations,
                            user_id):
         """ Inserts new annotations into the database and returns assigned ids
@@ -774,9 +797,11 @@ class AnnotationDB(object):
         return np.uint64(annotation_id)
 
     def get_max_annotation_id(self):
-        """ Return unique Node ID for given Chunk ID
+        """ Gets maximal annotation id in the table based on atomic counter
 
-        atomic counter
+        This is an approximation. It is not guaranteed that all ids smaller or
+        equal to this id exists. However, it is guaranteed that no larger id
+        exist at the time this function is executed.
 
         :return: uint64
         """
@@ -881,10 +906,7 @@ class AnnotationDB(object):
 
         anno_ids = []
 
-        i = 0
         for annotation in annotations:
-            i += 1
-
             sv_ids, annotation_data = annotation
 
             # Get unique id
@@ -1073,6 +1095,9 @@ class AnnotationDB(object):
             serialize_node_id(sv_id), filter_=time_filter)
 
         if row is None:
+            return []
+
+        if not self.mapping_family_id in row.cells:
             return []
 
         anno_id_entries = row.cells[self.mapping_family_id][serialize_key(
