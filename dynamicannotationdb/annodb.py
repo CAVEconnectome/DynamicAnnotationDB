@@ -124,14 +124,18 @@ class AnnotationMetaDB(object):
         if self._is_loaded(table_id):
             return True
 
-        if table_id in self.get_existing_tables():
+        try:
             self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
                                                          client=self.client,
                                                          instance=self.instance)
             return True
-        else:
-            print("Table id does not exist")
-            return False
+        except:
+            if table_id in self.get_existing_tables():
+                print("Could not load table")
+                return False
+            else:
+                print("Table id does not exist")
+                return False
 
     def get_serialized_info(self):
         """ Rerturns dictionary that can be used to load this AnnotationMetaDB
