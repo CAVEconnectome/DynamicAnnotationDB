@@ -58,3 +58,32 @@ def deserialize_key(key: bytes) -> str:
     :return: str
     """
     return key.decode()
+
+
+def build_table_id(dataset_name, table_name):
+    """ Combines dataset name and annotation to create specific table id
+
+    :param dataset_name: str
+    :param table_name: str
+    :return: str
+    """
+
+    return "annov1__%s__%s" % (dataset_name, table_name)
+
+
+def get_table_name_from_table_id(table_id):
+    """ Extracts dataset name from table_id
+
+    :param table_id: str
+    :return: str
+    """
+    return table_id.split("__")[-1]
+
+
+def get_dataset_name_from_table_id(table_id):
+    """ Extracts dataset name from table_id
+
+    :param table_id: str
+    :return: str
+    """
+    return table_id.split("__")[1]

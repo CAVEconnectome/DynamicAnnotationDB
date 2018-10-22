@@ -119,7 +119,7 @@ class AnnotationDB(object):
     def metadata(self):
         return {"schema_name": self.schema_name,
                 "chunk_size": self.chunk_size,
-                "table_id": self.table_id}
+                "table_name": key_utils.get_table_name_from_table_id(self.table_id)}
 
     def _check_and_create_table(self):
         """ Checks if table exists and creates new one if necessary """

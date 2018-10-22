@@ -1,4 +1,3 @@
-import collections
 import numpy as np
 import time
 import datetime
@@ -10,6 +9,9 @@ from dynamicannotationdb.annodb import AnnotationDB
 
 
 # global variables
+from dynamicannotationdb.key_utils import build_table_id, \
+    get_table_name_from_table_id, get_dataset_name_from_table_id
+
 HOME = os.path.expanduser("~")
 N_DIGITS_UINT64 = len(str(np.iinfo(np.uint64).max))
 LOCK_EXPIRED_TIME_DELTA = datetime.timedelta(minutes=3, seconds=00)
@@ -17,35 +19,6 @@ LOCK_EXPIRED_TIME_DELTA = datetime.timedelta(minutes=3, seconds=00)
 # Setting environment wide credential path
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = \
     HOME + "/.cloudvolume/secrets/google-secret.json"
-
-
-def build_table_id(dataset_name, table_name):
-    """ Combines dataset name and annotation to create specific table id
-
-    :param dataset_name: str
-    :param table_name: str
-    :return: str
-    """
-
-    return "annov1__%s__%s" % (dataset_name, table_name)
-
-
-def get_table_name_from_table_id(table_id):
-    """ Extracts dataset name from table_id
-
-    :param table_id: str
-    :return: str
-    """
-    return table_id.split("__")[-1]
-
-
-def get_dataset_name_from_table_id(table_id):
-    """ Extracts dataset name from table_id
-
-    :param table_id: str
-    :return: str
-    """
-    return table_id.split("__")[1]
 
 
 class AnnotationMetaDB(object):
