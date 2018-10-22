@@ -38,7 +38,7 @@ class AnnotationDB(object):
                  instance_id: str = "pychunkedgraph",
                  project_id: str = "neuromancer-seung-import",
                  chunk_size: Tuple[int, int, int] = None,
-                 em_schema: str = None,
+                 schema_name: str = None,
                  credentials: Optional[credentials.Credentials] = None,
                  client: bigtable.Client = None,
                  is_new: bool = False):
@@ -60,8 +60,8 @@ class AnnotationDB(object):
         self._chunk_size = self.check_and_write_table_parameters("chunk_size",
                                                                  chunk_size)
 
-        self._em_schema = self.check_and_write_table_parameters("em_schema",
-                                                                em_schema)
+        self._schema_name = self.check_and_write_table_parameters("schema_name",
+                                                                  schema_name)
 
         self._bits_per_dim = 12
 
@@ -108,12 +108,18 @@ class AnnotationDB(object):
         return self._chunk_size
 
     @property
-    def em_schema(self) -> np.ndarray:
-        return self._em_schema
+    def schema_name(self) -> str:
+        return self._schema_name
 
     @property
     def bits_per_dim(self) -> int:
         return self._bits_per_dim
+
+    @property
+    def metadata(self):
+        return {"schema_name": self.schema_name,
+                "chunk_size": self.chunk_size,
+                "table_id": self.table_id}
 
     def _check_and_create_table(self):
         """ Checks if table exists and creates new one if necessary """
@@ -155,7 +161,7 @@ class AnnotationDB(object):
         if row is None or ser_param_key not in row.cells[self.data_family_id]:
             assert value is not None
 
-            if param_key in ["em_schema"]:
+            if param_key in ["schema_name"]:
                 val_dict = {param_key: key_utils.serialize_key(value)}
             elif param_key in ["chunk_size"]:
                 val_dict = {param_key: np.array(value,
@@ -170,7 +176,7 @@ class AnnotationDB(object):
         else:
             value = row.cells[self.data_family_id][ser_param_key][0].value
 
-            if param_key in ["em_schema"]:
+            if param_key in ["schema_name"]:
                 value = key_utils.deserialize_key(value)
             elif param_key in ["chunk_size"]:
                 value = np.frombuffer(value, dtype=np.uint64)
@@ -619,63 +625,43 @@ class AnnotationDB(object):
 
         return range(id_range[0], id_range[1])
 
-    # def delete_annotations(self, annotation_ids, user_id,
-    #                        bulk_block_size=10000):
-    #     """ Deletes annotations from the database
-    #
-    #     :param annotation_ids: list of uint64s
-    #         annotations (key: annotation id)
-    #     :param user_id: str
-    #     :return: bool
-    #         success
-    #     """
-    #
-    #     time_stamp = datetime.datetime.utcnow()
-    #
-    #     # TODO: lock
-    #
-    #     rows = []
-    #     success_marker = []
-    #     sv_mapping_dict = collections.defaultdict(list)
-    #
-    #     for annotation_id in annotation_ids:
-    #         old_sv_ids = self.get_annotation_sv_ids(annotation_id)
-    #
-    #         if old_sv_ids is None:
-    #             success_marker.append(False)
-    #             continue
-    #
-    #         if len(old_sv_ids) == 0:
-    #             success_marker.append(False)
-    #             continue
-    #
-    #         for sv_id in np.unique(old_sv_ids):
-    #             sv_mapping_dict[sv_id].append(annotation_id)
-    #
-    #         rows = [self._write_annotation_data(annotation_id,
-    #                                             np.array([]).tobytes(),
-    #                                             np.array([]),
-    #                                             time_stamp=time_stamp)]
-    #
-    #         success_marker.append(True)
-    #
-    #         if len(rows) >= bulk_block_size / 2:
-    #             rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
-    #                                                is_new=False))
-    #
-    #             self.bulk_write(rows)
-    #
-    #             sv_mapping_dict = collections.defaultdict(list)
-    #             rows = []
-    #
-    #     if len(rows) > 0:
-    #         rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
-    #                                            is_new=False))
-    #
-    #         self.bulk_write(rows)
-    #
-    #     return success_marker
-    #
+    def delete_annotations(self, user_id, annotation_ids,
+                           bulk_block_size=10000):
+        """ Deletes annotations from the database
+
+        :param annotation_ids: list of uint64s
+            annotations (key: annotation id)
+        :param user_id: str
+        :return: bool
+            success
+        """
+
+        time_stamp = datetime.datetime.utcnow()
+
+        # TODO: lock
+
+        rows = []
+        success_marker = []
+
+        for annotation_id in annotation_ids:
+            rows = [self._write_annotation_data(annotation_id,
+                                                np.array([]).tobytes(),
+                                                np.array([]),
+                                                time_stamp=time_stamp)]
+
+            success_marker.append(True)
+
+            if len(rows) >= bulk_block_size:
+                self.bulk_write(rows)
+                rows = []
+
+        if len(rows) >= bulk_block_size:
+            self.bulk_write(rows)
+            rows = []
+
+        return success_marker
+
+
     # def update_annotations(self, annotations, user_id,
     #                        bulk_block_size=10000):
     #     """ Updates existing annotations
