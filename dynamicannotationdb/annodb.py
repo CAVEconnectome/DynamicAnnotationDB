@@ -10,11 +10,16 @@ from google.api_core.retry import Retry, if_exception_type
 from google.api_core.exceptions import Aborted, DeadlineExceeded, \
     ServiceUnavailable
 from google.cloud import bigtable
+from google.auth import credentials
 from google.cloud.bigtable.row_filters import TimestampRange, \
     TimestampRangeFilter, ColumnRangeFilter, ValueRangeFilter, RowFilterChain, \
     ColumnQualifierRegexFilter, RowFilterUnion, ConditionalRowFilter, \
     PassAllFilter, BlockAllFilter
 from google.cloud.bigtable.column_family import MaxVersionsGCRule
+
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+
+from dynamicannotationdb import key_utils, table_info
 
 # global variables
 HOME = os.path.expanduser("~")
@@ -26,58 +31,17 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = \
     HOME + "/.cloudvolume/secrets/google-secret.json"
 
 
-def serialize_key(key):
-    """ Serializes a key to be ingested by a bigtable table row
+class AnnotationDB(object):
+    """ Manages annotations from a single annotation type and dataset """
 
-    :param key: str
-    :return: str
-    """
-    return key.encode("utf-8")
-
-
-def serialize_node_id(node_id):
-    """ Serializes an id to be ingested by a bigtable table row
-
-    :param node_id: int
-    :return: str
-    """
-    return serialize_key("%.20d" % node_id)
-
-
-def deserialize_node_id(node_id):
-    """ De-serializes a node id from a BigTable row
-
-    :param node_id: int
-    :return: str
-    """
-    return int(node_id.decode())
-
-
-def build_table_id(dataset_name, annotation_type):
-    """ Combines dataset name and annotation to create specific table id
-
-    :param dataset_name: str
-    :param annotation_type: str
-    :return: str
-    """
-
-    return "anno__%s__%s" % (dataset_name, annotation_type)
-
-
-def get_annotation_type_from_table_id(table_id):
-    """ Extracts annotation type from table_id
-
-    :param table_id: str
-    :return: str
-    """
-    return table_id.split("__")[-1]
-
-
-class AnnotationMetaDB(object):
-    """ Manages annotations from all types and datasets """
-
-    def __init__(self, client=None, instance_id='pychunkedgraph',
-                 project_id="neuromancer-seung-import", credentials=None):
+    def __init__(self, table_id: str,
+                 instance_id: str = "pychunkedgraph",
+                 project_id: str = "neuromancer-seung-import",
+                 chunk_size: Tuple[int, int, int] = None,
+                 em_schema: str = None,
+                 credentials: Optional[credentials.Credentials] = None,
+                 client: bigtable.Client = None,
+                 is_new: bool = False):
 
         if client is not None:
             self._client = client
@@ -86,399 +50,21 @@ class AnnotationMetaDB(object):
                                            credentials=credentials)
 
         self._instance = self.client.instance(instance_id)
-
-        self._loaded_tables = {}
-
-    @property
-    def client(self):
-        return self._client
-
-    @property
-    def instance(self):
-        return self._instance
-
-    @property
-    def instance_id(self):
-        return self.instance.instance_id
-
-    @property
-    def project_id(self):
-        return self.client.project
-
-    def _is_loaded(self, table_id):
-        """ Checks whether table_id is in _loaded_tables
-
-        :param table_id: str
-        :return: bool
-        """
-        return table_id in self._loaded_tables
-
-    def _load_table(self, table_id):
-        """ Loads existing table
-
-        :param table_id: str
-        :return: bool
-            success
-        """
-
-        if self._is_loaded(table_id):
-            return True
-
-        try:
-            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
-                                                         client=self.client,
-                                                         instance=self.instance)
-            return True
-        except:
-            if table_id in self.get_existing_tables():
-                print("Could not load table")
-                return False
-            else:
-                print("Table id does not exist")
-                return False
-
-    def get_serialized_info(self):
-        """ Rerturns dictionary that can be used to load this AnnotationMetaDB
-
-        :return: dict
-        """
-        amdb_info = {"instance_id": self.instance_id,
-                     "project_id": self.project_id,
-                     "credentials": self.client.credentials}
-
-        return amdb_info
-
-    def has_table(self, dataset_name, annotation_type):
-        """Checks whether a table exists in the database
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :return: bool
-            whether table already exists
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        return table_id in self.get_existing_tables()
-
-    def get_existing_tables(self):
-        """ Collects table_ids of existing tables
-
-        Annotation tables start with `anno`
-
-        :return: list
-        """
-        tables = self.instance.list_tables()
-
-        annotation_tables = []
-        for table in tables:
-            table_name = table.name.split("/")[-1]
-            if table_name.startswith("anno"):
-                annotation_tables.append(table_name)
-
-        return annotation_tables
-
-    def get_existing_annotation_types(self, dataset_name):
-        """ Collects annotation_types of existing tables
-
-        Annotation tables start with `anno`
-
-        :return: list
-        """
-        annotation_tables = self.get_existing_tables()
-
-        annotation_types = []
-        for table_name in annotation_tables:
-            if table_name.startswith("anno__%s" % dataset_name):
-                annotation_types.append(
-                    get_annotation_type_from_table_id(table_name))
-
-        return annotation_types
-
-    def create_table(self, dataset_name, annotation_type):
-        """ Creates new table
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :return: bool
-            success
-        """
-        assert not "__" in dataset_name
-        assert not "__" in annotation_type
-
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if table_id not in self.get_existing_tables():
-            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
-                                                         client=self.client,
-                                                         instance=self.instance,
-                                                         is_new=True)
-            return True
-        else:
-            return False
-
-    def _delete_table(self, dataset_name, annotation_type):
-        """ Deletes a table
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :return: bool
-            success
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if table_id in self.get_existing_tables():
-            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
-                                                         client=self.client,
-                                                         instance=self.instance,
-                                                         is_new=True)
-            self._loaded_tables[table_id].table.delete()
-            del self._loaded_tables[table_id]
-            return True
-        else:
-            return False
-
-    def _reset_table(self, dataset_name, annotation_type, n_retries=20,
-                     delay_s=5):
-        """ Deletes and creates table
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :return: bool
-        """
-
-        if self._delete_table(dataset_name=dataset_name,
-                              annotation_type=annotation_type):
-            for i_try in range(n_retries):
-                time.sleep(delay_s)
-                try:
-                    if self.create_table(dataset_name=dataset_name,
-                                         annotation_type=annotation_type):
-                        return True
-                except:
-                    time.sleep(delay_s)
-            return False
-        else:
-            return False
-
-    def insert_annotations(self, dataset_name, annotation_type, annotations,
-                           user_id):
-        """ Inserts new annotations into the database and returns assigned ids
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param annotations: list of tuples
-             [(sv_ids, serialized data), ...]
-        :param user_id: str
-        :return: list of uint64
-            assigned ids (in same order as `annotations`)
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].insert_annotations(annotations,
-                                                                user_id)
-
-    def delete_annotations(self, dataset_name, annotation_type, annotation_ids,
-                           user_id):
-        """ Deletes annotations from the database
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param annotation_ids: list of uint64s
-        :param user_id: str
-        :return: bool
-            success
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return False
-
-        return self._loaded_tables[table_id].delete_annotations(annotation_ids,
-                                                                user_id)
-
-    def update_annotations(self, dataset_name, annotation_type, annotations,
-                           user_id):
-        """ Updates existing annotations
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param annotations: list of tuples
-             [(annotation_id, sv_ids, serialized data), ...]
-        :param user_id: str
-        :return: list of bools
-            success
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return False
-
-        return self._loaded_tables[table_id].update_annotations(annotations,
-                                                                user_id)
-
-    def get_annotation_ids_from_sv(self, dataset_name, annotation_type, sv_id,
-                                   time_stamp=None):
-        """ Acquires all annotation ids associated with a supervoxel
-
-        To also read the data of the acquired annotations use
-        `get_annotations_from_sv`
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param sv_id: uint64
-        :param time_stamp: None or datetime
-        :return: list
-            annotation ids
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_annotation_ids_from_sv(sv_id, time_stamp=time_stamp)
-
-    def get_annotation_data(self, dataset_name, annotation_type, annotation_id,
-                            time_stamp=None):
-        """ Reads the data of a single annotation object
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param annotation_id: uint64
-        :param time_stamp: None or datetime
-        :return: blob
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_annotation_data(annotation_id,
-                                                                 time_stamp=time_stamp)
-
-    def get_annotation(self, dataset_name, annotation_type, annotation_id,
-                       time_stamp=None):
-        """ Reads the data and sv_ids of a single annotation object
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param annotation_id: uint64
-        :param time_stamp: None or datetime
-        :return: blob, list of np.uint64
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_annotation(annotation_id,
-                                                            time_stamp=time_stamp)
-
-    def get_annotation_sv_ids(self, dataset_name, annotation_type,
-                              annotation_id, time_stamp=None):
-        """ Reads the sv ids belonging to an annotation
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param annotation_id: uint64
-        :param time_stamp: None or datetime
-        :return: list of uint64s
-        """
-
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_annotation_sv_ids(annotation_id, time_stamp=time_stamp)
-
-    def get_annotations_from_sv_ids(self, dataset_name, annotation_type, sv_ids, time_stamp=None):
-        """ Collects the data from all annotations asociated with a set of supervoxels
-
-        This function wraps `get_annotation_from_sv`
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param sv_ids: list[uint64]
-        :param time_stamp: None or datetime
-        :return: dict
-            dictionary with keys of annotation ids and values of annotations blobs
-        """
-        annotations = {}
-        for sv_id in sv_ids:
-            annotations.update(self.get_annotations_from_sv(dataset_name, annotation_type, sv_id, time_stamp=time_stamp))
-        return annotations
-
-    def get_annotations_from_sv(self, dataset_name, annotation_type, sv_id,
-                                time_stamp=None):
-        """ Collects the data from all annotations associated with a supervoxel
-
-        This function chains `get_annotation_ids_from_sv` and `get_annotation`
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param sv_id: uint64
-        :param time_stamp: None or datetime
-        :return: dict
-            dictionary with keys of annotation ids and values of annotations
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_annotations_from_sv(sv_id, time_stamp=time_stamp)
-
-    def get_max_annotation_id(self, dataset_name, annotation_type):
-        """ Returns an upper limit on the annotation id in the table
-
-        There is no guarantee that the returned id itself exists. It is only
-        guaranteed that no larger id exists.
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :return: np.uint64
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_max_annotation_id()
-
-
-class AnnotationDB(object):
-    """ Manages annotations from a single annotation type and dataset """
-
-    def __init__(self, table_id, instance_id="pychunkedgraph",
-                 project_id="neuromancer-seung-import", client=None,
-                 instance=None, credentials=None, is_new=False):
-
-        if client is not None and instance is not None:
-            self._client = client
-            self._instance = instance
-        else:
-            self._client = bigtable.Client(project=project_id, admin=True,
-                                           credentials=credentials)
-            self._instance = self.client.instance(instance_id)
-
         self._table_id = table_id
 
         self._table = self.instance.table(self.table_id)
 
         if is_new:
             self._check_and_create_table()
+
+        self._chunk_size = self.check_and_write_table_parameters("chunk_size",
+                                                                 chunk_size)
+
+        self._em_schema = self.check_and_write_table_parameters("em_schema",
+                                                                em_schema)
+
+        self._bits_per_dim = 12
+
 
     @property
     def client(self):
@@ -505,12 +91,29 @@ class AnnotationDB(object):
         return "1"
 
     @property
-    def mapping_family_id(self):
+    def bsp_family_id(self):
         return "2"
 
     @property
     def log_family_id(self):
         return "3"
+
+    @property
+    def family_ids(self):
+        return [self.data_family_id, self.incrementer_family_id,
+                self.log_family_id, self.bsp_family_id]
+
+    @property
+    def chunk_size(self) -> np.ndarray:
+        return self._chunk_size
+
+    @property
+    def em_schema(self) -> np.ndarray:
+        return self._em_schema
+
+    @property
+    def bits_per_dim(self) -> int:
+        return self._bits_per_dim
 
     def _check_and_create_table(self):
         """ Checks if table exists and creates new one if necessary """
@@ -525,15 +128,60 @@ class AnnotationDB(object):
                                              gc_rule=MaxVersionsGCRule(1))
             f_inc.create()
 
-            f_map = self.table.column_family(self.mapping_family_id)
-            f_map.create()
+            f_bsp = self.table.column_family(self.bsp_family_id)
+            f_bsp.create()
 
             f_log = self.table.column_family(self.log_family_id)
             f_log.create()
 
             print("Table created")
 
-    def _mutate_row(self, row_key, column_family_id, val_dict, time_stamp=None):
+    def check_and_write_table_parameters(self, param_key: str,
+                                         value: Optional[np.uint64] = None
+                                         ) -> np.uint64:
+        """ Checks if a parameter already exists in the table. If it already
+        exists it returns the stored value, else it stores the given value. It
+        raises an exception if no value is passed and the parameter does not
+        exist, yet.
+
+        :param param_key: str
+        :param value: np.uint64
+        :return: np.uint64
+            value
+        """
+        ser_param_key = key_utils.serialize_key(param_key)
+        row = self.table.read_row(key_utils.serialize_key("params"))
+
+        if row is None or ser_param_key not in row.cells[self.data_family_id]:
+            assert value is not None
+
+            if param_key in ["em_schema"]:
+                val_dict = {param_key: key_utils.serialize_key(value)}
+            elif param_key in ["chunk_size"]:
+                val_dict = {param_key: np.array(value,
+                                                dtype=np.uint64).tobytes()}
+            else:
+                raise Exception("Unknown type for parameter")
+
+            row = self.mutate_row(key_utils.serialize_key("params"), self.data_family_id,
+                                  val_dict)
+
+            self.bulk_write([row])
+        else:
+            value = row.cells[self.data_family_id][ser_param_key][0].value
+
+            if param_key in ["em_schema"]:
+                value = key_utils.deserialize_key(value)
+            elif param_key in ["chunk_size"]:
+                value = np.frombuffer(value, dtype=np.uint64)
+            else:
+                raise Exception("Unknown key")
+
+        return value
+
+    def mutate_row(self, row_key: bytes, column_family_id: str, val_dict: dict,
+                   time_stamp: Optional[datetime.datetime] = None
+                   ) -> bigtable.row.Row:
         """ Mutates a single row
 
         :param row_key: serialized bigtable row key
@@ -550,8 +198,13 @@ class AnnotationDB(object):
                          value=value, timestamp=time_stamp)
         return row
 
-    def _bulk_write(self, rows, annotation_ids=None, operation_id=None,
-                    slow_retry=True):
+
+    def bulk_write(self, rows: Iterable[bigtable.row.DirectRow],
+                   # root_ids: Optional[Union[np.uint64,
+                   #                          Iterable[np.uint64]]] = None,
+                   # operation_id: Optional[np.uint64] = None,
+                   slow_retry: bool = True,
+                   block_size: int = 2000) -> bool:
         """ Writes a list of mutated rows in bulk
 
         WARNING: If <rows> contains the same row (same row_key) and column
@@ -561,12 +214,13 @@ class AnnotationDB(object):
 
         :param rows: list
             list of mutated rows
-        :param annotation_ids: list if uint64
-        :param operation_id: str or None
+        :param root_ids: list if uint64
+        :param operation_id: uint64 or None
             operation_id (or other unique id) that *was* used to lock the root
             the bulk write is only executed if the root is still locked with
             the same id.
         :param slow_retry: bool
+        :param block_size: int
         """
         if slow_retry:
             initial = 5
@@ -582,203 +236,239 @@ class AnnotationDB(object):
             multiplier=2.0,
             deadline=LOCK_EXPIRED_TIME_DELTA.seconds)
 
-        if annotation_ids is not None and operation_id is not None:
-            if isinstance(annotation_ids, int):
-                annotation_ids = [annotation_ids]
+        # if root_ids is not None and operation_id is not None:
+        #     if isinstance(root_ids, int):
+        #         root_ids = [root_ids]
+        #
+        #     if not self.check_and_renew_root_locks(root_ids, operation_id):
+        #         return False
 
-            if not self._check_and_renew_annotation_locks(annotation_ids,
-                                                          operation_id):
-                return False
+        for i_row in range(0, len(rows), block_size):
+            status = self.table.mutate_rows(rows[i_row: i_row + block_size],
+                                            retry=retry_policy)
 
-        status = self.table.mutate_rows(rows, retry=retry_policy)
-
-        if not any(status):
-            raise Exception(status)
-
-        return True
-
-    def _lock_annotation_loop(self, annoation_id, operation_id, max_tries=1,
-                              waittime_s=0.5):
-        """ Attempts to lock multiple roots at the same time
-
-        :param annoation_id: uint64
-        :param operation_id: str
-        :param max_tries: int
-        :param waittime_s: float
-        :return: bool, list of uint64s
-            success, latest root ids
-        """
-
-        i_try = 0
-        while i_try < max_tries:
-
-            # Attempt to lock annoation id
-            lock_acquired = self._lock_single_annotation(annoation_id,
-                                                         operation_id)
-
-            if lock_acquired:
-                return True
-
-            time.sleep(waittime_s)
-            i_try += 1
-            print(i_try)
-
-        return False
-
-    def _lock_single_annotation(self, annotation_id, operation_id):
-        """ Attempts to lock the latest version of a root node
-
-        :param annotation_id: uint64
-        :param operation_id: str
-            an id that is unique to the process asking to lock the root node
-        :return: bool
-            success
-        """
-
-        operation_id_b = serialize_key(operation_id)
-
-        lock_key = serialize_key("lock")
-
-        # Build a column filter which tests if a lock was set (== lock column
-        # exists) and if it is still valid (timestamp younger than
-        # LOCK_EXPIRED_TIME_DELTA)
-
-        time_cutoff = datetime.datetime.utcnow() - LOCK_EXPIRED_TIME_DELTA
-
-        # Comply to resolution of BigTables TimeRange
-        time_cutoff -= datetime.timedelta(
-            microseconds=time_cutoff.microsecond % 1000)
-
-        time_filter = TimestampRangeFilter(TimestampRange(start=time_cutoff))
-
-        lock_key_filter = ColumnRangeFilter(column_family_id=self.data_family_id,
-                                            start_column=lock_key,
-                                            end_column=lock_key,
-                                            inclusive_start=True,
-                                            inclusive_end=True)
-
-        # Combine filters together
-        chained_filter = RowFilterChain([time_filter, lock_key_filter])
-
-        # Get conditional row using the chained filter
-        annotation_row = self.table.row(serialize_node_id(annotation_id),
-                                        filter_=chained_filter)
-
-        # Set row lock if condition returns no results (state == False)
-        annotation_row.set_cell(self.data_family_id, lock_key, operation_id_b,
-                                state=False)
-
-        # The lock was acquired when set_cell returns False (state)
-        lock_acquired = not annotation_row.commit()
-
-        return lock_acquired
-
-    def _unlock_annotation(self, annotation_id, operation_id):
-        """ Unlocks a root
-
-        This is mainly used for cases where multiple roots need to be locked and
-        locking was not sucessful for all of them
-
-        :param annotation_id: uint64
-        :param operation_id: str
-            an id that is unique to the process asking to lock the root node
-        :return: bool
-            success
-        """
-        operation_id_b = serialize_key(operation_id)
-
-        lock_key = serialize_key("lock")
-
-        # Build a column filter which tests if a lock was set (== lock column
-        # exists) and if it is still valid (timestamp younger than
-        # LOCK_EXPIRED_TIME_DELTA) and if the given operation_id is still
-        # the active lock holder
-
-        time_cutoff = datetime.datetime.utcnow() - LOCK_EXPIRED_TIME_DELTA
-
-        # Comply to resolution of BigTables TimeRange
-        time_cutoff -= datetime.timedelta(
-            microseconds=time_cutoff.microsecond % 1000)
-
-        time_filter = TimestampRangeFilter(TimestampRange(start=time_cutoff))
-
-        column_key_filter = ColumnQualifierRegexFilter(lock_key)
-
-        value_filter = ColumnQualifierRegexFilter(operation_id_b)
-
-        # Chain these filters together
-        chained_filter = RowFilterChain([time_filter, column_key_filter,
-                                         value_filter])
-
-        # Get conditional row using the chained filter
-        root_row = self.table.row(serialize_node_id(annotation_id),
-                                  filter_=chained_filter)
-
-        # Delete row if conditions are met (state == True)
-        root_row.delete_cell(self.data_family_id, lock_key, state=True)
-
-        root_row.commit()
-
-    def _check_and_renew_annotation_locks(self, annotation_ids, operation_id):
-        """ Tests if the roots are locked with the provided operation_id and
-        renews the lock to reset the time_stam
-
-        This is mainly used before executing a bulk write
-
-        :param annotation_ids: uint64
-        :param operation_id: str
-            an id that is unique to the process asking to lock the root node
-        :return: bool
-            success
-        """
-
-        for annotation_id in annotation_ids:
-            if not self._check_and_renew_annotation_lock_single(annotation_id,
-                                                                operation_id):
-                return False
+            if not all(status):
+                raise Exception(status)
 
         return True
 
-    def _check_and_renew_annotation_lock_single(self, root_id, operation_id):
-        """ Tests if the root is locked with the provided operation_id and
-        renews the lock to reset the time_stam
+    def get_chunk_coordinates(self, node_or_chunk_id: np.uint64
+                              ) -> np.ndarray:
+        """ Extract X, Y and Z coordinate from Node ID or Chunk ID
 
-        This is mainly used before executing a bulk write
-
-        :param root_id: uint64
-        :param operation_id: str
-            an id that is unique to the process asking to lock the root node
-        :return: bool
-            success
+        :param node_or_chunk_id: np.uint64
+        :return: Tuple(int, int, int)
         """
-        operation_id_b = serialize_key(operation_id)
 
-        lock_key = serialize_key("lock")
-        new_parents_key = serialize_key("new_parents")
+        x_offset = 64 - self.bits_per_dim
+        y_offset = x_offset - self.bits_per_dim
+        z_offset = y_offset - self.bits_per_dim
 
-        # Build a column filter which tests if a lock was set (== lock column
-        # exists) and if the given operation_id is still the active lock holder.
+        x = int(node_or_chunk_id) >> x_offset & 2 ** self.bits_per_dim - 1
+        y = int(node_or_chunk_id) >> y_offset & 2 ** self.bits_per_dim - 1
+        z = int(node_or_chunk_id) >> z_offset & 2 ** self.bits_per_dim - 1
+        return np.array([x, y, z])
 
-        column_key_filter = ColumnQualifierRegexFilter(operation_id_b)
-        value_filter = ColumnQualifierRegexFilter(operation_id_b)
+    def get_chunk_id(self, node_id: Optional[np.uint64] = None,
+                     x: Optional[int] = None,
+                     y: Optional[int] = None,
+                     z: Optional[int] = None) -> np.uint64:
+        """ (1) Extract Chunk ID from Node ID
+            (2) Build Chunk ID from X, Y and Z components
 
-        # Chain these filters together
-        chained_filter = RowFilterChain([column_key_filter, value_filter])
+        :param node_id: np.uint64
+        :param layer: int
+        :param x: int
+        :param y: int
+        :param z: int
+        :return: np.uint64
+        """
+        assert node_id is not None or \
+               all(v is not None for v in [x, y, z])
 
-        # Get conditional row using the chained filter
-        root_row = self.table.row(serialize_node_id(root_id),
-                                  filter_=chained_filter)
+        if node_id is not None:
+            chunk_offset = 64 - 3 * self.bits_per_dim
+            return np.uint64((int(node_id) >> chunk_offset) << chunk_offset)
+        else:
 
-        # Set row lock if condition returns a result (state == True)
-        root_row.set_cell(self.data_family_id, lock_key, operation_id_b,
-                          state=False)
+            if not(x < 2 ** self.bits_per_dim and
+                   y < 2 ** self.bits_per_dim and
+                   z < 2 ** self.bits_per_dim):
+                raise Exception("Chunk coordinate is out of range for"
+                                "this graph with %d bits/dim."
+                                "[%d, %d, %d]; max = %d."
+                                % (self.bits_per_dim, x, y, z,
+                                   2 ** self.bits_per_dim))
 
-        # The lock was acquired when set_cell returns True (state)
-        lock_acquired = not root_row.commit()
+            x_offset = 64 - self.bits_per_dim
+            y_offset = x_offset - self.bits_per_dim
+            z_offset = y_offset - self.bits_per_dim
+            return np.uint64(x << x_offset | y << y_offset | z << z_offset)
 
-        return lock_acquired
+    def get_chunk_ids_from_node_ids(self, node_ids: Iterable[np.uint64]
+                                    ) -> np.ndarray:
+        """ Extract a list of Chunk IDs from a list of Node IDs
 
-    def _get_unique_annotation_id(self):
+        :param node_ids: np.ndarray(dtype=np.uint64)
+        :return: np.ndarray(dtype=np.uint64)
+        """
+        # TODO: measure and improve performance(?)
+        return np.array(list(map(lambda x: self.get_chunk_id(node_id=x),
+                                 node_ids)), dtype=np.uint64)
+
+    def get_segment_id_limit(self, node_or_chunk_id: np.uint64) -> np.uint64:
+        """ Get maximum possible Segment ID for given Node ID or Chunk ID
+
+        :param node_or_chunk_id: np.uint64
+        :return: np.uint64
+        """
+        chunk_offset = 64 - 3 * self.bits_per_dim
+        return np.uint64(2 ** chunk_offset - 1)
+
+    def get_segment_id(self, node_id: np.uint64) -> np.uint64:
+        """ Extract Segment ID from Node ID
+
+        :param node_id: np.uint64
+        :return: np.uint64
+        """
+
+        return node_id & self.get_segment_id_limit(node_id)
+
+    def get_node_id(self, segment_id: np.uint64,
+                    chunk_id: Optional[np.uint64] = None,
+                    x: Optional[int] = None,
+                    y: Optional[int] = None,
+                    z: Optional[int] = None) -> np.uint64:
+        """ (1) Build Node ID from Segment ID and Chunk ID
+            (2) Build Node ID from Segment ID, Layer, X, Y and Z components
+
+        :param segment_id: np.uint64
+        :param chunk_id: np.uint64
+        :param layer: int
+        :param x: int
+        :param y: int
+        :param z: int
+        :return: np.uint64
+        """
+
+        if chunk_id is not None:
+            return chunk_id | segment_id
+        else:
+            return self.get_chunk_id(x=x, y=y, z=z) | segment_id
+
+    def get_unique_segment_id_range(self, chunk_id: np.uint64 = None, step: int = 1
+                                    ) -> np.ndarray:
+        """ Return unique Segment ID for given Chunk ID
+
+        atomic counter
+
+        :param chunk_id: np.uint64
+        :param step: int
+        :return: np.uint64
+        """
+
+        # Incrementer row keys start with an "i" followed by the chunk id
+        if chunk_id is None:
+            row_key = table_info.annotation_counter_key_s
+        else:
+            row_key = key_utils.serialize_key("i%s" % key_utils.pad_node_id(chunk_id))
+        append_row = self.table.row(row_key, append=True)
+        append_row.increment_cell_value(self.incrementer_family_id,
+                                        table_info.counter_key_s, step)
+
+        # This increments the row entry and returns the value AFTER incrementing
+        latest_row = append_row.commit()
+        max_segment_id_b = latest_row[self.incrementer_family_id][table_info.counter_key_s][0][0]
+        max_segment_id = int.from_bytes(max_segment_id_b, byteorder="big")
+
+        min_segment_id = max_segment_id + 1 - step
+        segment_id_range = np.array(range(min_segment_id, max_segment_id + 1),
+                                    dtype=np.uint64)
+        return segment_id_range
+
+    def get_unique_segment_id(self, chunk_id: np.uint64 = None) -> np.uint64:
+        """ Return unique Segment ID for given Chunk ID
+
+        atomic counter
+
+        :param chunk_id: np.uint64
+        :param step: int
+        :return: np.uint64
+        """
+
+        return self.get_unique_segment_id_range(chunk_id=chunk_id, step=1)[0]
+
+    def get_unique_node_id_range(self, chunk_id: np.uint64 = None, step: int = 1
+                                 )  -> np.ndarray:
+        """ Return unique Node ID range for given Chunk ID
+
+        atomic counter
+
+        :param chunk_id: np.uint64
+        :param step: int
+        :return: np.uint64
+        """
+
+        segment_ids = self.get_unique_segment_id_range(chunk_id=chunk_id,
+                                                       step=step)
+
+        node_ids = np.array([self.get_node_id(segment_id, chunk_id)
+                             for segment_id in segment_ids], dtype=np.uint64)
+        return node_ids
+
+    def get_unique_node_id(self, chunk_id: np.uint64 = None) -> np.uint64:
+        """ Return unique Node ID for given Chunk ID
+
+        atomic counter
+
+        :param chunk_id: np.uint64
+        :return: np.uint64
+        """
+
+        return self.get_unique_node_id_range(chunk_id=chunk_id, step=1)[0]
+
+    def get_max_seg_id(self, chunk_id: np.uint64 = None) -> np.uint64:
+        """  Gets maximal seg id in a chunk based on the atomic counter
+
+        This is an approximation. It is not guaranteed that all ids smaller or
+        equal to this id exists. However, it is guaranteed that no larger id
+        exist at the time this function is executed.
+
+
+        :return: uint64
+        """
+
+        # Incrementer row keys start with an "i"
+        if chunk_id is None:
+            row_key = table_info.annotation_counter_key_s
+        else:
+            row_key = key_utils.serialize_key("i%s" % key_utils.pad_node_id(chunk_id))
+        row = self.table.read_row(row_key)
+
+        # Read incrementer value
+        if row is not None:
+            max_node_id_b = row.cells[self.incrementer_family_id][table_info.counter_key_s][0].value
+            max_node_id = int.from_bytes(max_node_id_b, byteorder="big")
+        else:
+            max_node_id = 0
+
+        return np.uint64(max_node_id)
+
+    def get_max_node_id(self, chunk_id: np.uint64 = None) -> np.uint64:
+        """  Gets maximal node id in a chunk based on the atomic counter
+
+        This is an approximation. It is not guaranteed that all ids smaller or
+        equal to this id exists. However, it is guaranteed that no larger id
+        exist at the time this function is executed.
+
+
+        :return: uint64
+        """
+
+        max_seg_id = self.get_max_seg_id(chunk_id)
+        return self.get_node_id(segment_id=max_seg_id, chunk_id=chunk_id)
+
+    def get_unique_annotation_id_range(self, step: int =1):
         """ Return unique Node ID for given Chunk ID
 
         atomic counter
@@ -786,19 +476,17 @@ class AnnotationDB(object):
         :return: uint64
         """
 
-        # Incrementer row keys start with an "i"
-        row_key = serialize_key("iannotations")
-        append_row = self.table.row(row_key, append=True)
-        append_row.increment_cell_value(self.incrementer_family_id,
-                                        serialize_key("counter"), 1)
+        return self.get_unique_segment_id_range(chunk_id=None, step=step)
 
-        # This increments the row entry and returns the value AFTER incrementing
-        latest_row = append_row.commit()
-        annotation_id = int.from_bytes(
-            latest_row[self.incrementer_family_id][serialize_key('counter')][0][
-                0], byteorder="big")
+    def get_unique_annotation_id(self):
+        """ Return unique Node ID for given Chunk ID
 
-        return np.uint64(annotation_id)
+        atomic counter
+
+        :return: uint64
+        """
+
+        return self.get_unique_annotation_id_range(step=1)
 
     def get_max_annotation_id(self):
         """ Gets maximal annotation id in the table based on atomic counter
@@ -810,95 +498,84 @@ class AnnotationDB(object):
         :return: uint64
         """
 
-        # Incrementer row keys start with an "i"
-        row_key = serialize_key("iannotations")
-        row = self.table.read_row(row_key)
+        return self.get_max_seg_id(chunk_id=None)
 
-        # Read incrementer value
-        if row is not None:
-            annotation_id = int.from_bytes(row.cells[self.incrementer_family_id][serialize_key('counter')][0].value, byteorder="big")
-        else:
-            annotation_id = 0
-
-        return np.uint64(annotation_id)
-
-    def _get_unique_operation_id(self):
+    def get_unique_operation_id(self) -> np.uint64:
         """ Finds a unique operation id
 
         atomic counter
 
+        Operations essentially live in layer 0. Even if segmentation ids might
+        live in layer 0 one day, they would not collide with the operation ids
+        because we write information belonging to operations in a separate
+        family id.
+
         :return: str
         """
-
-        # Incrementer row keys start with an "i"
-        row_key = serialize_key("ioperations")
-        append_row = self.table.row(row_key, append=True)
+        append_row = self.table.row(table_info.operation_counter_key_s, append=True)
         append_row.increment_cell_value(self.incrementer_family_id,
-                                        "counter", 1)
+                                        table_info.counter_keys_s, 1)
 
-        # Commit increments the row entry and returns the value AFTER
-        # incrementing
+        # This increments the row entry and returns the value AFTER incrementing
         latest_row = append_row.commit()
-        latest_row_entry = latest_row[self.incrementer_family_id][serialize_key(
-            'counter')][0][0]
+        operation_id_b = latest_row[self.incrementer_family_id][table_info.counter_keys_s][0][0]
+        operation_id = int.from_bytes(operation_id_b, byteorder="big")
 
-        operation_id = "op%d" % int.from_bytes(latest_row_entry,
-                                               byteorder="big")
+        return np.uint64(operation_id)
 
-        return operation_id
+    def get_max_operation_id(self) -> np.uint64:
+        """  Gets maximal operation id based on the atomic counter
 
-    def _create_log_row(self, operation_id, user_id, annotation_id, time_stamp):
-        val_dict = {serialize_key("user"): serialize_key(user_id),
-                    serialize_key("annotation"):
-                        np.array(annotation_id, dtype=np.uint64).tobytes()}
+        This is an approximation. It is not guaranteed that all ids smaller or
+        equal to this id exists. However, it is guaranteed that no larger id
+        exist at the time this function is executed.
 
-        row = self._mutate_row(serialize_key(operation_id),
-                               self.log_family_id, val_dict, time_stamp)
 
-        return row
+        :return: uint64
+        """
+        row = self.table.read_row(table_info.operation_counter_key_s)
 
-    def _write_sv_mapping(self, sv_mapping_dict, time_stamp=None, add=True,
-                          is_new=True):
-        rows = []
+        # Read incrementer value
+        if row is not None:
+            max_operation_id_b = row.cells[self.incrementer_family_id][table_info.counter_key_s][0].value
+            max_operation_id = int.from_bytes(max_operation_id_b,
+                                              byteorder="big")
+        else:
+            max_operation_id = 0
 
-        for sv_id in sv_mapping_dict.keys():
-            if not is_new:
-                mapped_anno_ids = self.get_annotation_ids_from_sv(sv_id)
+        return np.uint64(max_operation_id)
 
-                relevant_anno_ids = []
-                for anno_id in sv_mapping_dict[sv_id]:
-                    if add and anno_id not in mapped_anno_ids:
-                       relevant_anno_ids.append(anno_id)
-                    elif not add and anno_id in mapped_anno_ids:
-                       relevant_anno_ids.append(anno_id)
-            else:
-                relevant_anno_ids = sv_mapping_dict[sv_id]
-
-            relevant_anno_ids_bin = np.array(relevant_anno_ids,
-                                             dtype=np.uint64).tobytes()
-            rows.append(self._mutate_row(serialize_node_id(sv_id),
-                                         self.mapping_family_id,
-                                         {"mapped_anno_ids": relevant_anno_ids_bin},
-                                         time_stamp=time_stamp))
-        return rows
-
-    def _write_annotation_data(self, annotation_id, annotation_data, sv_ids,
+    def _write_annotation_data(self, annotation_id, annotation_data, bsp_dict,
                                time_stamp=None):
 
-        m_row = self._mutate_row(serialize_node_id(annotation_id),
-                                 self.data_family_id,
-                                 {"data": annotation_data,
-                                  "sv_ids": sv_ids.tobytes()},
-                                 time_stamp=time_stamp)
+        rows = []
+        val_dict = {table_info.blob_key_s: annotation_data}
+        anno_id_b = np.array(annotation_id, dtype=np.uint64).tobytes()
+        for k in bsp_dict:
+            val_dict[k] = np.array(bsp_dict[k]["id"], dtype=np.uint64).tobytes()
+            coord = np.array(bsp_dict[k]["coordinate"], dtype=np.float32)
+            coord_b = coord.tobytes()
+            name_b = key_utils.serialize_key(k)
 
-        return m_row
+            rows.append(self.mutate_row(key_utils.serialize_uint64(bsp_dict[k]["id"]),
+                                        self.bsp_family_id,
+                                        {table_info.anno_id_key_s: anno_id_b,
+                                         table_info.coordinate_key_s: coord_b,
+                                         table_info.bsp_name_key_s: name_b},
+                                        time_stamp=time_stamp))
 
-    def insert_annotations(self, annotations, user_id, bulk_block_size=10):
+        rows.append(self.mutate_row(key_utils.serialize_uint64(annotation_id),
+                                    self.data_family_id,
+                                    val_dict, time_stamp=time_stamp))
+        return rows
+
+    def insert_annotations(self, user_id, annotations, bulk_block_size=2000):
         """ Inserts new annotations into the database and returns assigned ids
 
+        :param user_id: str
         :param annotations: list
             list of annotations (data)
-        :param user_id: str
+        :param bulk_block_size: int
         :return: list of uint64
             assigned ids (in same order as `annotations`)
         """
@@ -906,221 +583,175 @@ class AnnotationDB(object):
         time_stamp = datetime.datetime.utcnow()
 
         rows = []
-        sv_mapping_dict = collections.defaultdict(list)
+        id_range = self.get_unique_annotation_id_range(step=len(annotations))
 
-        anno_ids = []
+        for i_annotation, annotation in enumerate(annotations):
+            bsps, annotation_data = annotation
 
-        for annotation in annotations:
-            sv_ids, annotation_data = annotation
+            # Get unique ids
+            annotation_id = id_range[i_annotation]
 
-            # Get unique id
-            annotation_id = self._get_unique_annotation_id()
+            bsp_dict = {}
+            for bsp_k in bsps:
+                bsp_dict[bsp_k] = {}
+                bsp_coord = bsps[bsp_k]
+                bsp_dict[bsp_k]['coordinate'] = bsp_coord
+
+                bsp_chunk_coord = bsp_coord / self.chunk_size
+                bsp_chunk_coord = bsp_chunk_coord.astype(np.int)
+                chunk_id = self.get_chunk_id(x=bsp_chunk_coord[0],
+                                             y=bsp_chunk_coord[1],
+                                             z=bsp_chunk_coord[2])
+                bsp_dict[bsp_k]['id'] = self.get_unique_node_id(chunk_id)
 
             # Write data
-            rows.append(self._write_annotation_data(annotation_id,
+            rows.extend(self._write_annotation_data(annotation_id,
                                                     annotation_data,
-                                                    sv_ids,
+                                                    bsp_dict,
                                                     time_stamp=time_stamp))
 
-            for sv_id in np.unique(sv_ids):
-                sv_mapping_dict[sv_id].append(annotation_id)
-
-            anno_ids.append(annotation_id)
-
-            if len(rows) >= bulk_block_size / 2:
-                rows.extend(self._write_sv_mapping(sv_mapping_dict))
-
-                self._bulk_write(rows)
-
-                sv_mapping_dict = collections.defaultdict(list)
+            if len(rows) >= bulk_block_size:
+                self.bulk_write(rows)
                 rows = []
 
         if len(rows) > 0:
-            rows.extend(self._write_sv_mapping(sv_mapping_dict))
+            self.bulk_write(rows)
 
-            self._bulk_write(rows)
+        return range(id_range[0], id_range[1])
 
-        return anno_ids
-
-    def delete_annotations(self, annotation_ids, user_id,
-                           bulk_block_size=10000):
-        """ Deletes annotations from the database
-
-        :param annotation_ids: list of uint64s
-            annotations (key: annotation id)
-        :param user_id: str
-        :return: bool
-            success
-        """
-
-        time_stamp = datetime.datetime.utcnow()
-
-        # TODO: lock
-
-        rows = []
-        success_marker = []
-        sv_mapping_dict = collections.defaultdict(list)
-
-        for annotation_id in annotation_ids:
-            old_sv_ids = self.get_annotation_sv_ids(annotation_id)
-
-            if old_sv_ids is None:
-                success_marker.append(False)
-                continue
-
-            if len(old_sv_ids) == 0:
-                success_marker.append(False)
-                continue
-
-            for sv_id in np.unique(old_sv_ids):
-                sv_mapping_dict[sv_id].append(annotation_id)
-
-            rows = [self._write_annotation_data(annotation_id,
-                                                np.array([]).tobytes(),
-                                                np.array([]),
-                                                time_stamp=time_stamp)]
-
-            success_marker.append(True)
-
-            if len(rows) >= bulk_block_size / 2:
-                rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
-                                                   is_new=False))
-
-                self._bulk_write(rows)
-
-                sv_mapping_dict = collections.defaultdict(list)
-                rows = []
-
-        if len(rows) > 0:
-            rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
-                                               is_new=False))
-
-            self._bulk_write(rows)
-
-        return success_marker
-
-    def update_annotations(self, annotations, user_id,
-                           bulk_block_size=10000):
-        """ Updates existing annotations
-
-        :param annotation_ids: list of uint64s
-            annotations (key: annotation id)
-        :param user_id: str
-        :return: bool
-            success
-        """
-
-        time_stamp = datetime.datetime.utcnow()
-
-        # TODO: lock
-
-        rows = []
-        success_marker = []
-        new_sv_mapping_dict = collections.defaultdict(list)
-        old_sv_mapping_dict = collections.defaultdict(list)
-
-        for annotation in annotations:
-            annotation_id, sv_ids, annotation_data = annotation
-
-            old_sv_ids = self.get_annotation_sv_ids(annotation_id)
-
-            if old_sv_ids is None:
-                success_marker.append(False)
-                continue
-
-            if len(old_sv_ids) == 0:
-                success_marker.append(False)
-                continue
-
-            sv_id_mask = old_sv_ids != sv_ids
-
-            for sv_id in np.unique(sv_ids[sv_id_mask]):
-                new_sv_mapping_dict[sv_id].append(annotation_id)
-
-            for sv_id in np.unique(old_sv_ids[sv_id_mask]):
-                old_sv_mapping_dict[sv_id].append(annotation_id)
-
-            rows = [self._write_annotation_data(annotation_id,
-                                                annotation_data,
-                                                sv_ids,
-                                                time_stamp=time_stamp)]
-
-            success_marker.append(True)
-
-            if len(rows) >= bulk_block_size / 3:
-                rows.extend(self._write_sv_mapping(old_sv_mapping_dict,
-                                                   add=False,
-                                                   is_new=False))
-                rows.extend(self._write_sv_mapping(new_sv_mapping_dict,
-                                                   add=True,
-                                                   is_new=False))
-
-                self._bulk_write(rows)
-
-                new_sv_mapping_dict = collections.defaultdict(list)
-                old_sv_mapping_dict = collections.defaultdict(list)
-                rows = []
-
-        if len(rows) > 0:
-            rows.extend(self._write_sv_mapping(old_sv_mapping_dict,
-                                               add=False,
-                                               is_new=False))
-            rows.extend(self._write_sv_mapping(new_sv_mapping_dict,
-                                               add=True,
-                                               is_new=False))
-
-            self._bulk_write(rows)
-
-        return success_marker
-
-    def get_annotation_ids_from_sv(self, sv_id, time_stamp=None):
-        """ Acquires all annotation ids associated with a supervoxel
-
-        To also read the data of the acquired annotations use
-        `get_annotations_from_sv`
-
-        :param sv_id: uint64
-        :param time_stamp: None or datetime
-        :return: list
-            annotation ids
-        """
-
-        if time_stamp is None:
-            time_stamp = datetime.datetime.utcnow()
-
-        # Adjust time_stamp to bigtable precision
-        time_stamp -= datetime.timedelta(
-            microseconds=time_stamp.microsecond % 1000)
-
-        time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
-
-        # Read mapped entries with time_stamp
-        row = self.table.read_row(
-            serialize_node_id(sv_id), filter_=time_filter)
-
-        if row is None:
-            return []
-
-        if not self.mapping_family_id in row.cells:
-            return []
-
-        anno_id_entries = row.cells[self.mapping_family_id][serialize_key(
-            "mapped_anno_ids")]
-        anno_ids = []
-        for entry in anno_id_entries:
-            # print(len(np.frombuffer(entry.value, dtype=np.uint64)))
-            anno_ids.extend(np.frombuffer(entry.value, dtype=np.uint64))
-
-        # Resolve changes over time
-        anno_ids, c_anno_ids = np.unique(anno_ids, return_counts=True)
-
-        # Every anno_id with number of entries % 2 == 0 was removed
-        anno_ids = anno_ids[c_anno_ids % 2 == 1]
-
-        return anno_ids
+    # def delete_annotations(self, annotation_ids, user_id,
+    #                        bulk_block_size=10000):
+    #     """ Deletes annotations from the database
+    #
+    #     :param annotation_ids: list of uint64s
+    #         annotations (key: annotation id)
+    #     :param user_id: str
+    #     :return: bool
+    #         success
+    #     """
+    #
+    #     time_stamp = datetime.datetime.utcnow()
+    #
+    #     # TODO: lock
+    #
+    #     rows = []
+    #     success_marker = []
+    #     sv_mapping_dict = collections.defaultdict(list)
+    #
+    #     for annotation_id in annotation_ids:
+    #         old_sv_ids = self.get_annotation_sv_ids(annotation_id)
+    #
+    #         if old_sv_ids is None:
+    #             success_marker.append(False)
+    #             continue
+    #
+    #         if len(old_sv_ids) == 0:
+    #             success_marker.append(False)
+    #             continue
+    #
+    #         for sv_id in np.unique(old_sv_ids):
+    #             sv_mapping_dict[sv_id].append(annotation_id)
+    #
+    #         rows = [self._write_annotation_data(annotation_id,
+    #                                             np.array([]).tobytes(),
+    #                                             np.array([]),
+    #                                             time_stamp=time_stamp)]
+    #
+    #         success_marker.append(True)
+    #
+    #         if len(rows) >= bulk_block_size / 2:
+    #             rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
+    #                                                is_new=False))
+    #
+    #             self.bulk_write(rows)
+    #
+    #             sv_mapping_dict = collections.defaultdict(list)
+    #             rows = []
+    #
+    #     if len(rows) > 0:
+    #         rows.extend(self._write_sv_mapping(sv_mapping_dict, add=False,
+    #                                            is_new=False))
+    #
+    #         self.bulk_write(rows)
+    #
+    #     return success_marker
+    #
+    # def update_annotations(self, annotations, user_id,
+    #                        bulk_block_size=10000):
+    #     """ Updates existing annotations
+    #
+    #     :param annotation_ids: list of uint64s
+    #         annotations (key: annotation id)
+    #     :param user_id: str
+    #     :return: bool
+    #         success
+    #     """
+    #
+    #     time_stamp = datetime.datetime.utcnow()
+    #
+    #     # TODO: lock
+    #
+    #     rows = []
+    #     success_marker = []
+    #     new_sv_mapping_dict = collections.defaultdict(list)
+    #     old_sv_mapping_dict = collections.defaultdict(list)
+    #
+    #     for annotation in annotations:
+    #         annotation_id, sv_ids, annotation_data = annotation
+    #
+    #         old_sv_ids = self.get_annotation_sv_ids(annotation_id)
+    #
+    #         if old_sv_ids is None:
+    #             success_marker.append(False)
+    #             continue
+    #
+    #         if len(old_sv_ids) == 0:
+    #             success_marker.append(False)
+    #             continue
+    #
+    #         sv_id_mask = old_sv_ids != sv_ids
+    #
+    #         for sv_id in np.unique(sv_ids[sv_id_mask]):
+    #             new_sv_mapping_dict[sv_id].append(annotation_id)
+    #
+    #         for sv_id in np.unique(old_sv_ids[sv_id_mask]):
+    #             old_sv_mapping_dict[sv_id].append(annotation_id)
+    #
+    #         rows = [self._write_annotation_data(annotation_id,
+    #                                             annotation_data,
+    #                                             sv_ids,
+    #                                             time_stamp=time_stamp)]
+    #
+    #         success_marker.append(True)
+    #
+    #         if len(rows) >= bulk_block_size / 3:
+    #             rows.extend(self._write_sv_mapping(old_sv_mapping_dict,
+    #                                                add=False,
+    #                                                is_new=False))
+    #             rows.extend(self._write_sv_mapping(new_sv_mapping_dict,
+    #                                                add=True,
+    #                                                is_new=False))
+    #
+    #             self.bulk_write(rows)
+    #
+    #             new_sv_mapping_dict = collections.defaultdict(list)
+    #             old_sv_mapping_dict = collections.defaultdict(list)
+    #             rows = []
+    #
+    #     if len(rows) > 0:
+    #         rows.extend(self._write_sv_mapping(old_sv_mapping_dict,
+    #                                            add=False,
+    #                                            is_new=False))
+    #         rows.extend(self._write_sv_mapping(new_sv_mapping_dict,
+    #                                            add=True,
+    #                                            is_new=False))
+    #
+    #         self.bulk_write(rows)
+    #
+    #     return success_marker
 
     def get_annotation(self, annotation_id, time_stamp=None):
-        """ Reads the data and sv_ids of a single annotation object
+        """ Reads the data and bsps of a single annotation object
 
         :param annotation_id: uint64
         :param time_stamp: None or datetime
@@ -1136,29 +767,30 @@ class AnnotationDB(object):
 
         time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
 
-        row = self.table.read_row(serialize_node_id(annotation_id),
+        row = self.table.read_row(key_utils.serialize_uint64(annotation_id),
                                   filter_=time_filter)
+        cells = row.cells[self.data_family_id]
 
-        bin_data = row.cells[self.data_family_id][serialize_key("data")][0].value
+        bsps = {}
+        bin_data = None
+        for k in cells:
+            value = cells[k][0].value
+            if k == table_info.blob_key_s:
+                bin_data = value
+            else:
+                bsps[key_utils.deserialize_key(k)] = np.frombuffer(value, dtype=np.uint64)[0]
 
-        if len(bin_data) == 0:
+        if bin_data is None:
             return None, None
 
-        sv_ids_bin = row.cells[self.data_family_id][serialize_key("sv_ids")][0].value
+        return bin_data, bsps
 
-        if len(sv_ids_bin) == 0:
-            return bin_data, None
+    def get_bsp(self, bsp_id, time_stamp=None):
+        """ Reads the data and bsps of a single annotation object
 
-        sv_ids = np.frombuffer(sv_ids_bin, dtype=np.uint64)
-
-        return bin_data, sv_ids
-
-    def get_annotation_data(self, annotation_id, time_stamp=None):
-        """ Reads the data of a single annotation object
-
-        :param annotation_id: uint64
+        :param bsp_id: uint64
         :param time_stamp: None or datetime
-        :return: blob
+        :return: blob, list of np.uint64
         """
 
         if time_stamp is None:
@@ -1170,68 +802,11 @@ class AnnotationDB(object):
 
         time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
 
-        row = self.table.read_row(serialize_node_id(annotation_id),
+        row = self.table.read_row(key_utils.serialize_uint64(bsp_id),
                                   filter_=time_filter)
+        cells = row.cells[self.bsp_family_id]
 
-        bin_data = row.cells[self.data_family_id][serialize_key("data")][0].value
+        coordinate = np.frombuffer(cells[table_info.coordinate_key_s][0].value, dtype=np.float32)
+        annotation_id = np.frombuffer(cells[table_info.anno_id_key_s][0].value, dtype=np.uint64)[0]
 
-        if len(bin_data) == 0:
-            return None
-
-        return bin_data
-
-    def get_annotation_sv_ids(self, annotation_id, time_stamp=None):
-        """ Reads the sv ids belonging to an annotation
-
-        :param annotation_id: uint64
-        :param time_stamp: None or datetime
-        :return: list of np.uint64s
-        """
-
-        if time_stamp is None:
-            time_stamp = datetime.datetime.utcnow()
-
-        # Adjust time_stamp to bigtable precision
-        time_stamp -= datetime.timedelta(
-            microseconds=time_stamp.microsecond % 1000)
-
-        time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
-
-        row = self.table.read_row(serialize_node_id(annotation_id),
-                                  filter_=time_filter)
-
-        if row is None:
-            return []
-
-        # for entry in row.cells[self.data_family_id][serialize_key("sv_ids")]:
-        #     print(entry.timestamp)
-
-        sv_ids_bin = row.cells[self.data_family_id][serialize_key("sv_ids")][0].value
-
-        if len(sv_ids_bin) == 0:
-            return None
-
-        sv_ids = np.frombuffer(sv_ids_bin, dtype=np.uint64)
-
-        return sv_ids
-
-    def get_annotations_from_sv(self, sv_id, time_stamp=None):
-        """ Collects the data from all annotations associated with a supervoxel
-
-        This function chains `get_annotation_ids_from_sv` and
-        `get_annotation_data`
-
-        :param sv_id: uint64
-        :param time_stamp: None or datetime
-        :return: dict
-            annotations with keys of ids and values of json blobs
-        """
-
-        annotation_ids = self.get_annotation_ids_from_sv(sv_id,
-                                                         time_stamp=time_stamp)
-
-        annotation_dict = {}
-        for annotation_id in annotation_ids:
-            annotation_dict[annotation_id] = self.get_annotation_data(annotation_id)
-
-        return annotation_dict
+        return coordinate, annotation_id
