@@ -163,7 +163,7 @@ class AnnotationMetaDB(object):
         return metadata_list
 
     def create_table(self, user_id, dataset_name, table_name, schema_name,
-                     chunk_size=[512, 512, 64]):
+                     chunk_size=[512, 512, 128]):
         """ Creates new table
 
         :param dataset_name: str
