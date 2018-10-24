@@ -309,8 +309,8 @@ class AnnotationMetaDB(object):
             print("Cannot load table")
             return None
 
-        return self._loaded_tables[table_id].get_annotation_data(annotation_id,
-                                                                 time_stamp=time_stamp)
+        return self._loaded_tables[table_id].get_annotation(annotation_id,
+                                                            time_stamp=time_stamp)[0]
 
     def get_annotation(self, dataset_name, table_name, annotation_id,
                        time_stamp=None):
