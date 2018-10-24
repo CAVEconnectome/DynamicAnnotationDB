@@ -119,7 +119,8 @@ class AnnotationDB(object):
     def metadata(self):
         return {"schema_name": self.schema_name,
                 "chunk_size": self.chunk_size,
-                "table_name": key_utils.get_table_name_from_table_id(self.table_id)}
+                "table_name": key_utils.get_table_name_from_table_id(self.table_id),
+                "max_annotation_id": self.get_max_annotation_id()}
 
     def _check_and_create_table(self):
         """ Checks if table exists and creates new one if necessary """
@@ -362,8 +363,8 @@ class AnnotationDB(object):
         else:
             return self.get_chunk_id(x=x, y=y, z=z) | segment_id
 
-    def get_unique_segment_id_range(self, chunk_id: np.uint64 = None, step: int = 1
-                                    ) -> np.ndarray:
+    def get_unique_segment_id_range(self, chunk_id: np.uint64 = None,
+                                    step: int = 1) -> np.ndarray:
         """ Return unique Segment ID for given Chunk ID
 
         atomic counter
@@ -378,6 +379,7 @@ class AnnotationDB(object):
             row_key = table_info.annotation_counter_key_s
         else:
             row_key = key_utils.serialize_key("i%s" % key_utils.pad_node_id(chunk_id))
+
         append_row = self.table.row(row_key, append=True)
         append_row.increment_cell_value(self.incrementer_family_id,
                                         table_info.counter_key_s, step)
@@ -474,7 +476,7 @@ class AnnotationDB(object):
         max_seg_id = self.get_max_seg_id(chunk_id)
         return self.get_node_id(segment_id=max_seg_id, chunk_id=chunk_id)
 
-    def get_unique_annotation_id_range(self, step: int =1):
+    def get_unique_annotation_id_range(self, step: int = 1):
         """ Return unique Node ID for given Chunk ID
 
         atomic counter
@@ -589,6 +591,8 @@ class AnnotationDB(object):
         time_stamp = datetime.datetime.utcnow()
 
         rows = []
+
+        print("N annotations:", len(annotations))
         id_range = self.get_unique_annotation_id_range(step=len(annotations))
 
         for i_annotation, annotation in enumerate(annotations):
@@ -600,7 +604,7 @@ class AnnotationDB(object):
             bsp_dict = {}
             for bsp_k in bsps:
                 bsp_dict[bsp_k] = {}
-                bsp_coord = bsps[bsp_k]
+                bsp_coord = np.array(bsps[bsp_k])
                 bsp_dict[bsp_k]['coordinate'] = bsp_coord
 
                 bsp_chunk_coord = bsp_coord / self.chunk_size
@@ -623,7 +627,7 @@ class AnnotationDB(object):
         if len(rows) > 0:
             self.bulk_write(rows)
 
-        return range(id_range[0], id_range[1])
+        return id_range
 
     def delete_annotations(self, user_id, annotation_ids,
                            bulk_block_size=10000):
