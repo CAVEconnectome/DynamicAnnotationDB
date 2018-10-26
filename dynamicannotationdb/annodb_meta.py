@@ -199,7 +199,8 @@ class AnnotationMetaDB(object):
         if table_id in self.get_existing_tables():
             self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
                                                          client=self.client,
-                                                         is_new=True)
+                                                         chunk_size=[1, 1, 1],
+                                                         schema_name="u")
             self._loaded_tables[table_id].table.delete()
             del self._loaded_tables[table_id]
             return True
