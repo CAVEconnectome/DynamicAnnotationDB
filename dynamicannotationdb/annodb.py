@@ -759,7 +759,11 @@ class AnnotationDB(object):
 
         row = self.table.read_row(key_utils.serialize_uint64(annotation_id),
                                   filter_=time_filter)
-        cells = row.cells[self.data_family_id]
+
+        try:
+            cells = row.cells[self.data_family_id]
+        except:
+            return None, None
 
         bsps = {}
         bin_data = None
