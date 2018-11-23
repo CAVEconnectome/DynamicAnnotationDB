@@ -39,6 +39,10 @@ class AnnotationDB(object):
                  project_id: str = "neuromancer-seung-import",
                  chunk_size: Tuple[int, int, int] = None,
                  schema_name: str = None,
+                 user_id: str = None,
+                 lookup_mip_resolution: Tuple[int, int, int] = None,
+                 materialize_table: bool = True,
+                 additional_metadata: bytes = None,
                  credentials: Optional[credentials.Credentials] = None,
                  client: bigtable.Client = None,
                  is_new: bool = False):
@@ -58,10 +62,25 @@ class AnnotationDB(object):
             self._check_and_create_table()
 
         self._chunk_size = self.check_and_write_table_parameters("chunk_size",
-                                                                 chunk_size)
+                                                                 chunk_size,
+                                                                 mandatory=True)
 
         self._schema_name = self.check_and_write_table_parameters("schema_name",
-                                                                  schema_name)
+                                                                  schema_name,
+                                                                 mandatory=True)
+
+        self._user_id = self.check_and_write_table_parameters("user_id",
+                                                              user_id,
+                                                              mandatory=True)
+
+        self._lookup_mip_resolution = self.check_and_write_table_parameters(
+            "lookup_mip_resolution", lookup_mip_resolution, mandatory=False)
+
+        self._materialize_table = self.check_and_write_table_parameters(
+            "materialize_table", materialize_table, mandatory=False)
+
+        self._additional_metadata = self.check_and_write_table_parameters(
+            "additional_metadata", additional_metadata, mandatory=False)
 
         self._bits_per_dim = 12
 
@@ -112,6 +131,34 @@ class AnnotationDB(object):
         return self._schema_name
 
     @property
+    def user_id(self) -> str:
+        return self._user_id
+
+    @property
+    def table_name(self) -> str:
+        return key_utils.get_table_name_from_table_id(self.table_id)
+
+    @property
+    def dataset_name(self) -> str:
+        return key_utils.get_dataset_name_from_table_id(self.table_id)
+
+    @property
+    def user_id(self) -> str:
+        return self._user_id
+
+    @property
+    def lookup_mip_resolution(self) -> np.ndarray:
+        return self._lookup_mip_resolution
+
+    @property
+    def materialize_table(self) -> bool:
+        return self._materialize_table
+
+    @property
+    def additional_metadata(self) -> bytes:
+        return self._additional_metadata
+
+    @property
     def bits_per_dim(self) -> int:
         return self._bits_per_dim
 
@@ -119,7 +166,13 @@ class AnnotationDB(object):
     def metadata(self):
         return {"schema_name": self.schema_name,
                 "chunk_size": self.chunk_size,
-                "table_name": key_utils.get_table_name_from_table_id(self.table_id),
+                "dataset_name": self.dataset_name,
+                "user_id": self.user_id,
+                "table_id": self.table_id,
+                "lookup_mip_resolution": self.chunk_size,
+                "materialize_table": self.materialize_table,
+                "additional_metadata": self.additional_metadata,
+                "table_name": self.table_name,
                 "max_annotation_id": self.get_max_annotation_id()}
 
     def _check_and_create_table(self):
@@ -144,8 +197,8 @@ class AnnotationDB(object):
             print("Table created")
 
     def check_and_write_table_parameters(self, param_key: str,
-                                         value: Optional[np.uint64] = None
-                                         ) -> np.uint64:
+                                         value: Optional[np.uint64] = None,
+                                         mandatory: bool = True) -> np.uint64:
         """ Checks if a parameter already exists in the table. If it already
         exists it returns the stored value, else it stores the given value. It
         raises an exception if no value is passed and the parameter does not
@@ -162,11 +215,14 @@ class AnnotationDB(object):
         if row is None or ser_param_key not in row.cells[self.data_family_id]:
             assert value is not None
 
-            if param_key in ["schema_name"]:
+            if param_key in ["schema_name", "user_id"]:
                 val_dict = {param_key: key_utils.serialize_key(value)}
-            elif param_key in ["chunk_size"]:
-                val_dict = {param_key: np.array(value,
-                                                dtype=np.uint64).tobytes()}
+            elif param_key in ["chunk_size", "lookup_mip_resolution"]:
+                val_dict = {param_key: np.array(value, dtype=np.uint64).tobytes()}
+            elif param_key in ["materialize_table"]:
+                val_dict = {param_key: key_utils.serialize_uint64(value)}
+            elif param_key in ["additional_metadata"]:
+                val_dict = {param_key: value}
             else:
                 raise Exception("Unknown type for parameter")
 
@@ -177,10 +233,17 @@ class AnnotationDB(object):
         else:
             value = row.cells[self.data_family_id][ser_param_key][0].value
 
-            if param_key in ["schema_name"]:
+            if value is None and not mandatory:
+                return None
+
+            if param_key in ["schema_name", "user_id", "metadata"]:
                 value = key_utils.deserialize_key(value)
-            elif param_key in ["chunk_size"]:
+            elif param_key in ["chunk_size", "lookup_mip_resolution"]:
                 value = np.frombuffer(value, dtype=np.uint64)
+            elif param_key in ["materialize_table"]:
+                value = bool(key_utils.deserialize_uint64(value))
+            elif param_key in ["additional_metadata"]:
+                pass
             else:
                 raise Exception("Unknown key")
 

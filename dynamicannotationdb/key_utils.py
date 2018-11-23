@@ -72,7 +72,7 @@ def build_table_id(dataset_name, table_name):
 
 
 def get_table_name_from_table_id(table_id):
-    """ Extracts dataset name from table_id
+    """ Extracts table name from table_id
 
     :param table_id: str
     :return: str

@@ -84,6 +84,56 @@ class AnnotationMetaDB(object):
                 print("Table id does not exist")
                 return False
 
+    def _delete_table(self, dataset_name, table_name):
+        """ Deletes a table
+
+        :param dataset_name: str
+        :param table_name: str
+        :return: bool
+            success
+        """
+        table_id = build_table_id(dataset_name, table_name)
+
+        if table_id in self.get_existing_tables():
+            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
+                                                         client=self.client)
+            self._loaded_tables[table_id].table.delete()
+            del self._loaded_tables[table_id]
+            return True
+        else:
+            return False
+
+    def _reset_table(self, dataset_name, table_name, n_retries=20, delay_s=5):
+        """ Deletes and creates table
+
+        :param dataset_name: str
+        :param table_name: str
+        :return: bool
+        """
+
+        metadata = self.get_table_metadata(dataset_name, table_name)
+
+        if self._delete_table(dataset_name=dataset_name,
+                              table_name=table_name):
+            for i_try in range(n_retries):
+                time.sleep(delay_s)
+                try:
+                    if self.create_table(**metadata):
+                        return True
+                except:
+                    time.sleep(delay_s)
+            return False
+        else:
+            return False
+
+    def virtual_table(self, table_id):
+        is_loaded = self._load_table(table_id)
+
+        if not is_loaded:
+            raise Exception("cannot load table")
+
+        return self._loaded_tables[table_id]
+
     def get_serialized_info(self):
         """ Rerturns dictionary that can be used to load this AnnotationMetaDB
 
@@ -115,12 +165,7 @@ class AnnotationMetaDB(object):
         :return: dict
         """
         table_id = build_table_id(dataset_name, table_name)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].metadata
+        return self.virtual_table(table_id).metadata
 
     def get_existing_tables(self, dataset_name=None):
         """ Collects table_ids of existing tables
@@ -163,11 +208,18 @@ class AnnotationMetaDB(object):
         return metadata_list
 
     def create_table(self, user_id, dataset_name, table_name, schema_name,
-                     chunk_size=[512, 512, 128]):
+                     lookup_mip_resolution=[8, 8, 40], materialize_table=False,
+                     chunk_size=[512, 512, 128], additional_metadata=None):
         """ Creates new table
 
+        :param user_id: str
         :param dataset_name: str
         :param table_name: str
+        :param schema_name: str
+        :param lookup_mip_resolution: Tuple(int, int, int)
+        :param materialize_table: bool
+        :param chunk_size: Tuple(int, int, int)
+        :param additional_metadata: bytes or None
         :return: bool
             success
         """
@@ -181,54 +233,12 @@ class AnnotationMetaDB(object):
                                                          client=self.client,
                                                          schema_name=schema_name,
                                                          chunk_size=chunk_size,
+                                                         lookup_mip_resolution=lookup_mip_resolution,
+                                                         user_id=user_id,
+                                                         materialize_table=materialize_table,
+                                                         additional_metadata=additional_metadata,
                                                          is_new=True)
             return True
-        else:
-            return False
-
-    def _delete_table(self, dataset_name, table_name):
-        """ Deletes a table
-
-        :param dataset_name: str
-        :param table_name: str
-        :return: bool
-            success
-        """
-        table_id = build_table_id(dataset_name, table_name)
-
-        if table_id in self.get_existing_tables():
-            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
-                                                         client=self.client,
-                                                         chunk_size=[1, 1, 1],
-                                                         schema_name="u")
-            self._loaded_tables[table_id].table.delete()
-            del self._loaded_tables[table_id]
-            return True
-        else:
-            return False
-
-    def _reset_table(self, user_id, dataset_name, table_name, schema_name,
-                     n_retries=20, delay_s=5):
-        """ Deletes and creates table
-
-        :param dataset_name: str
-        :param table_name: str
-        :return: bool
-        """
-
-        if self._delete_table(dataset_name=dataset_name,
-                              table_name=table_name):
-            for i_try in range(n_retries):
-                time.sleep(delay_s)
-                try:
-                    if self.create_table(user_id=user_id,
-                                         dataset_name=dataset_name,
-                                         table_name=table_name,
-                                         schema_name=schema_name):
-                        return True
-                except:
-                    time.sleep(delay_s)
-            return False
         else:
             return False
 
@@ -246,12 +256,64 @@ class AnnotationMetaDB(object):
         """
         table_id = build_table_id(dataset_name, table_name)
 
+        return self.virtual_table(table_id).insert_annotations(user_id,
+                                                               annotations)
+
+    def get_annotation_data(self, dataset_name, table_name, annotation_id,
+                            time_stamp=None):
+        """ Reads the data of a single annotation object
+
+        :param dataset_name: str
+        :param table_name: str
+        :param annotation_id: uint64
+        :param time_stamp: None or datetime
+        :return: blob
+        """
+        table_id = build_table_id(dataset_name, table_name)
+
         if not self._load_table(table_id):
             print("Cannot load table")
             return None
 
-        return self._loaded_tables[table_id].insert_annotations(user_id,
-                                                                annotations)
+        return self.virtual_table(table_id).get_annotation(annotation_id,
+                                                           time_stamp=time_stamp)[0]
+
+    def get_annotation(self, dataset_name, table_name, annotation_id,
+                       time_stamp=None):
+        """ Reads the data and sv_ids of a single annotation object
+
+        :param dataset_name: str
+        :param annotation_type: str
+        :param annotation_id: uint64
+        :param time_stamp: None or datetime
+        :return: blob, list of np.uint64
+        """
+        table_id = build_table_id(dataset_name, table_name)
+
+        if not self._load_table(table_id):
+            print("Cannot load table")
+            return None
+
+        return self.virtual_table(table_id).get_annotation(annotation_id,
+                                                           time_stamp=time_stamp)
+
+    def get_max_annotation_id(self, dataset_name, table_name):
+        """ Returns an upper limit on the annotation id in the table
+
+        There is no guarantee that the returned id itself exists. It is only
+        guaranteed that no larger id exists.
+
+        :param dataset_name: str
+        :param table_name: str
+        :return: np.uint64
+        """
+        table_id = build_table_id(dataset_name, table_name)
+
+        if not self._load_table(table_id):
+            print("Cannot load table")
+            return None
+
+        return self.virtual_table(table_id).get_max_annotation_id()
 
     def delete_annotations(self, user_id, dataset_name, table_name,
                            annotation_ids):
@@ -270,8 +332,8 @@ class AnnotationMetaDB(object):
             print("Cannot load table")
             return False
 
-        return self._loaded_tables[table_id].delete_annotations(user_id,
-                                                                annotation_ids)
+        return self.virtual_table(table_id).delete_annotations(user_id,
+                                                               annotation_ids)
 
     def update_annotations(self, user_id, dataset_name, annotation_type,
                            annotations):
@@ -291,61 +353,5 @@ class AnnotationMetaDB(object):
             print("Cannot load table")
             return False
 
-        return self._loaded_tables[table_id].update_annotations(user_id,
-                                                                annotations)
-
-    def get_annotation_data(self, dataset_name, table_name, annotation_id,
-                            time_stamp=None):
-        """ Reads the data of a single annotation object
-
-        :param dataset_name: str
-        :param table_name: str
-        :param annotation_id: uint64
-        :param time_stamp: None or datetime
-        :return: blob
-        """
-        table_id = build_table_id(dataset_name, table_name)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_annotation(annotation_id,
-                                                            time_stamp=time_stamp)[0]
-
-    def get_annotation(self, dataset_name, table_name, annotation_id,
-                       time_stamp=None):
-        """ Reads the data and sv_ids of a single annotation object
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param annotation_id: uint64
-        :param time_stamp: None or datetime
-        :return: blob, list of np.uint64
-        """
-        table_id = build_table_id(dataset_name, table_name)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_annotation(annotation_id,
-                                                            time_stamp=time_stamp)
-
-    def get_max_annotation_id(self, dataset_name, table_name):
-        """ Returns an upper limit on the annotation id in the table
-
-        There is no guarantee that the returned id itself exists. It is only
-        guaranteed that no larger id exists.
-
-        :param dataset_name: str
-        :param table_name: str
-        :return: np.uint64
-        """
-        table_id = build_table_id(dataset_name, table_name)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return None
-
-        return self._loaded_tables[table_id].get_max_annotation_id()
+        return self.virtual_table(table_id).update_annotations(user_id,
+                                                               annotations)
