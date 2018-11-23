@@ -692,41 +692,41 @@ class AnnotationDB(object):
 
         return id_range
 
-    def delete_annotations(self, user_id, annotation_ids,
-                           bulk_block_size=10000):
-        """ Deletes annotations from the database
-
-        :param annotation_ids: list of uint64s
-            annotations (key: annotation id)
-        :param user_id: str
-        :return: bool
-            success
-        """
-
-        time_stamp = datetime.datetime.utcnow()
-
-        # TODO: lock
-
-        rows = []
-        success_marker = []
-
-        for annotation_id in annotation_ids:
-            rows = [self._write_annotation_data(annotation_id,
-                                                np.array([]).tobytes(),
-                                                np.array([]),
-                                                time_stamp=time_stamp)]
-
-            success_marker.append(True)
-
-            if len(rows) >= bulk_block_size:
-                self.bulk_write(rows)
-                rows = []
-
-        if len(rows) >= bulk_block_size:
-            self.bulk_write(rows)
-            rows = []
-
-        return success_marker
+    # def delete_annotations(self, user_id, annotation_ids,
+    #                        bulk_block_size=10000):
+    #     """ Deletes annotations from the database
+    #
+    #     :param annotation_ids: list of uint64s
+    #         annotations (key: annotation id)
+    #     :param user_id: str
+    #     :return: bool
+    #         success
+    #     """
+    #
+    #     time_stamp = datetime.datetime.utcnow()
+    #
+    #     # TODO: lock
+    #
+    #     rows = []
+    #     success_marker = []
+    #
+    #     for annotation_id in annotation_ids:
+    #         rows = [self._write_annotation_data(annotation_id,
+    #                                             np.array([]).tobytes(),
+    #                                             np.array([]),
+    #                                             time_stamp=time_stamp)]
+    #
+    #         success_marker.append(True)
+    #
+    #         if len(rows) >= bulk_block_size:
+    #             self.bulk_write(rows)
+    #             rows = []
+    #
+    #     if len(rows) >= bulk_block_size:
+    #         self.bulk_write(rows)
+    #         rows = []
+    #
+    #     return success_marker
 
 
     # def update_annotations(self, annotations, user_id,

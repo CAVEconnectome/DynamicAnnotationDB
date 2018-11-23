@@ -315,43 +315,43 @@ class AnnotationMetaDB(object):
 
         return self.virtual_table(table_id).get_max_annotation_id()
 
-    def delete_annotations(self, user_id, dataset_name, table_name,
-                           annotation_ids):
-        """ Deletes annotations from the database
-
-        :param dataset_name: str
-        :param table_name: str
-        :param annotation_ids: list of uint64s
-        :param user_id: str
-        :return: bool
-            success
-        """
-        table_id = build_table_id(dataset_name, table_name)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return False
-
-        return self.virtual_table(table_id).delete_annotations(user_id,
-                                                               annotation_ids)
-
-    def update_annotations(self, user_id, dataset_name, annotation_type,
-                           annotations):
-        """ Updates existing annotations
-
-        :param dataset_name: str
-        :param annotation_type: str
-        :param annotations: list of tuples
-             [(annotation_id, sv_ids, serialized data), ...]
-        :param user_id: str
-        :return: list of bools
-            success
-        """
-        table_id = build_table_id(dataset_name, annotation_type)
-
-        if not self._load_table(table_id):
-            print("Cannot load table")
-            return False
-
-        return self.virtual_table(table_id).update_annotations(user_id,
-                                                               annotations)
+    # def delete_annotations(self, user_id, dataset_name, table_name,
+    #                        annotation_ids):
+    #     """ Deletes annotations from the database
+    #
+    #     :param dataset_name: str
+    #     :param table_name: str
+    #     :param annotation_ids: list of uint64s
+    #     :param user_id: str
+    #     :return: bool
+    #         success
+    #     """
+    #     table_id = build_table_id(dataset_name, table_name)
+    #
+    #     if not self._load_table(table_id):
+    #         print("Cannot load table")
+    #         return False
+    #
+    #     return self.virtual_table(table_id).delete_annotations(user_id,
+    #                                                            annotation_ids)
+    #
+    # def update_annotations(self, user_id, dataset_name, annotation_type,
+    #                        annotations):
+    #     """ Updates existing annotations
+    #
+    #     :param dataset_name: str
+    #     :param annotation_type: str
+    #     :param annotations: list of tuples
+    #          [(annotation_id, sv_ids, serialized data), ...]
+    #     :param user_id: str
+    #     :return: list of bools
+    #         success
+    #     """
+    #     table_id = build_table_id(dataset_name, annotation_type)
+    #
+    #     if not self._load_table(table_id):
+    #         print("Cannot load table")
+    #         return False
+    #
+    #     return self.virtual_table(table_id).update_annotations(user_id,
+    #                                                            annotations)
