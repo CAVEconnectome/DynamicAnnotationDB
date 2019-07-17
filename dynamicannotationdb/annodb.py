@@ -39,10 +39,6 @@ class AnnotationDB(object):
                  project_id: str = "neuromancer-seung-import",
                  chunk_size: Tuple[int, int, int] = None,
                  schema_name: str = None,
-                 user_id: str = None,
-                 lookup_mip_resolution: Tuple[int, int, int] = None,
-                 materialize_table: bool = True,
-                 additional_metadata: bytes = None,
                  credentials: Optional[credentials.Credentials] = None,
                  client: bigtable.Client = None,
                  is_new: bool = False):
@@ -62,25 +58,10 @@ class AnnotationDB(object):
             self._check_and_create_table()
 
         self._chunk_size = self.check_and_write_table_parameters("chunk_size",
-                                                                 chunk_size,
-                                                                 mandatory=True)
+                                                                 chunk_size)
 
         self._schema_name = self.check_and_write_table_parameters("schema_name",
-                                                                  schema_name,
-                                                                 mandatory=True)
-
-        self._user_id = self.check_and_write_table_parameters("user_id",
-                                                              user_id,
-                                                              mandatory=True)
-
-        self._lookup_mip_resolution = self.check_and_write_table_parameters(
-            "lookup_mip_resolution", lookup_mip_resolution, mandatory=False)
-
-        self._materialize_table = self.check_and_write_table_parameters(
-            "materialize_table", materialize_table, mandatory=False)
-
-        self._additional_metadata = self.check_and_write_table_parameters(
-            "additional_metadata", additional_metadata, mandatory=False)
+                                                                  schema_name)
 
         self._bits_per_dim = 12
 
@@ -131,34 +112,6 @@ class AnnotationDB(object):
         return self._schema_name
 
     @property
-    def user_id(self) -> str:
-        return self._user_id
-
-    @property
-    def table_name(self) -> str:
-        return key_utils.get_table_name_from_table_id(self.table_id)
-
-    @property
-    def dataset_name(self) -> str:
-        return key_utils.get_dataset_name_from_table_id(self.table_id)
-
-    @property
-    def user_id(self) -> str:
-        return self._user_id
-
-    @property
-    def lookup_mip_resolution(self) -> np.ndarray:
-        return self._lookup_mip_resolution
-
-    @property
-    def materialize_table(self) -> bool:
-        return self._materialize_table
-
-    @property
-    def additional_metadata(self) -> bytes:
-        return self._additional_metadata
-
-    @property
     def bits_per_dim(self) -> int:
         return self._bits_per_dim
 
@@ -166,13 +119,7 @@ class AnnotationDB(object):
     def metadata(self):
         return {"schema_name": self.schema_name,
                 "chunk_size": self.chunk_size,
-                "dataset_name": self.dataset_name,
-                "user_id": self.user_id,
-                "table_id": self.table_id,
-                "lookup_mip_resolution": self.chunk_size,
-                "materialize_table": self.materialize_table,
-                "additional_metadata": self.additional_metadata,
-                "table_name": self.table_name,
+                "table_name": key_utils.get_table_name_from_table_id(self.table_id),
                 "max_annotation_id": self.get_max_annotation_id()}
 
     def _check_and_create_table(self):
@@ -197,8 +144,8 @@ class AnnotationDB(object):
             print("Table created")
 
     def check_and_write_table_parameters(self, param_key: str,
-                                         value: Optional[np.uint64] = None,
-                                         mandatory: bool = True) -> np.uint64:
+                                         value: Optional[np.uint64] = None
+                                         ) -> np.uint64:
         """ Checks if a parameter already exists in the table. If it already
         exists it returns the stored value, else it stores the given value. It
         raises an exception if no value is passed and the parameter does not
@@ -215,14 +162,11 @@ class AnnotationDB(object):
         if row is None or ser_param_key not in row.cells[self.data_family_id]:
             assert value is not None
 
-            if param_key in ["schema_name", "user_id"]:
+            if param_key in ["schema_name"]:
                 val_dict = {param_key: key_utils.serialize_key(value)}
-            elif param_key in ["chunk_size", "lookup_mip_resolution"]:
-                val_dict = {param_key: np.array(value, dtype=np.uint64).tobytes()}
-            elif param_key in ["materialize_table"]:
-                val_dict = {param_key: key_utils.serialize_uint64(value)}
-            elif param_key in ["additional_metadata"]:
-                val_dict = {param_key: value}
+            elif param_key in ["chunk_size"]:
+                val_dict = {param_key: np.array(value,
+                                                dtype=np.uint64).tobytes()}
             else:
                 raise Exception("Unknown type for parameter")
 
@@ -233,17 +177,10 @@ class AnnotationDB(object):
         else:
             value = row.cells[self.data_family_id][ser_param_key][0].value
 
-            if value is None and not mandatory:
-                return None
-
-            if param_key in ["schema_name", "user_id", "metadata"]:
+            if param_key in ["schema_name"]:
                 value = key_utils.deserialize_key(value)
-            elif param_key in ["chunk_size", "lookup_mip_resolution"]:
+            elif param_key in ["chunk_size"]:
                 value = np.frombuffer(value, dtype=np.uint64)
-            elif param_key in ["materialize_table"]:
-                value = bool(key_utils.deserialize_uint64(value))
-            elif param_key in ["additional_metadata"]:
-                pass
             else:
                 raise Exception("Unknown key")
 
@@ -616,10 +553,11 @@ class AnnotationDB(object):
 
         return np.uint64(max_operation_id)
 
-    def _write_annotation_data(self, annotation_id, val_dict, bsp_dict,
+    def _write_annotation_data(self, annotation_id, annotation_data, bsp_dict,
                                time_stamp=None):
 
         rows = []
+        val_dict = {table_info.blob_key_s: annotation_data}
         anno_id_b = np.array(annotation_id, dtype=np.uint64).tobytes()
         for k in bsp_dict:
             val_dict[k] = np.array(bsp_dict[k]["id"], dtype=np.uint64).tobytes()
@@ -638,20 +576,6 @@ class AnnotationDB(object):
                                     self.data_family_id,
                                     val_dict, time_stamp=time_stamp))
         return rows
-
-    def _build_bsp_dict(self, bsp):
-        bsp_dict = {}
-
-        bsp_coord = np.array(bsp)
-        bsp_dict['coordinate'] = bsp_coord
-
-        bsp_chunk_coord = bsp_coord / self.chunk_size
-        bsp_chunk_coord = bsp_chunk_coord.astype(np.int)
-        chunk_id = self.get_chunk_id(x=bsp_chunk_coord[0],
-                                     y=bsp_chunk_coord[1],
-                                     z=bsp_chunk_coord[2])
-        bsp_dict['id'] = self.get_unique_node_id(chunk_id)
-        return bsp_dict
 
     def insert_annotations(self, user_id, annotations, bulk_block_size=2000):
         """ Inserts new annotations into the database and returns assigned ids
@@ -679,15 +603,20 @@ class AnnotationDB(object):
 
             bsp_dict = {}
             for bsp_k in bsps:
-                bsp_dict[bsp_k] = self._build_bsp_dict(bsps[bsp_k])
+                bsp_dict[bsp_k] = {}
+                bsp_coord = np.array(bsps[bsp_k])
+                bsp_dict[bsp_k]['coordinate'] = bsp_coord
 
-            val_dict = {table_info.blob_key_s: annotation_data,
-                        table_info.user_id_key_s: key_utils.serialize_key(user_id)}
-
+                bsp_chunk_coord = bsp_coord / self.chunk_size
+                bsp_chunk_coord = bsp_chunk_coord.astype(np.int)
+                chunk_id = self.get_chunk_id(x=bsp_chunk_coord[0],
+                                             y=bsp_chunk_coord[1],
+                                             z=bsp_chunk_coord[2])
+                bsp_dict[bsp_k]['id'] = self.get_unique_node_id(chunk_id)
 
             # Write data
             rows.extend(self._write_annotation_data(annotation_id,
-                                                    val_dict,
+                                                    annotation_data,
                                                     bsp_dict,
                                                     time_stamp=time_stamp))
 
@@ -700,70 +629,116 @@ class AnnotationDB(object):
 
         return id_range
 
-    def update_annotations(self, user_id, annotations, bulk_block_size=2000):
-        """ Updates annotations into the database
+    def delete_annotations(self, user_id, annotation_ids,
+                           bulk_block_size=10000):
+        """ Deletes annotations from the database
 
+        :param annotation_ids: list of uint64s
+            annotations (key: annotation id)
         :param user_id: str
-        :param annotations: list
-            list of annotations (data)
-        :param bulk_block_size: int
+        :return: bool
+            success
         """
 
         time_stamp = datetime.datetime.utcnow()
 
+        # TODO: lock
+
         rows = []
+        success_marker = []
 
-        print("N annotations:", len(annotations))
+        for annotation_id in annotation_ids:
+            rows = [self._write_annotation_data(annotation_id,
+                                                np.array([]).tobytes(),
+                                                np.array([]),
+                                                time_stamp=time_stamp)]
 
-        for i_annotation, annotation in enumerate(annotations):
-            annotation_id, bsps, annotation_data = annotation
-
-            _, old_bsp_ids, _ = self.get_annotation(annotation_id)
-            for old_bsp_id in old_bsp_ids:
-                rows.append(self.mutate_row(key_utils.serialize_uint64(old_bsp_id),
-                                            column_family_id=self.bsp_family_id,
-                                            val_dict={table_info.delete_key_s: key_utils.serialize_uint64(np.uint64(1))}))
-
-            if annotation_data is None:
-                rows.append(self.mutate_row(key_utils.serialize_uint64(annotation_id),
-                                            column_family_id=self.data_family_id,
-                                            val_dict={table_info.delete_key_s: key_utils.serialize_uint64(np.uint64(1)),
-                                                      table_info.user_id_key_s: key_utils.serialize_key(user_id)}))
-            else:
-                bsp_dict = {}
-                for bsp_k in bsps:
-                    bsp_dict[bsp_k] = self._build_bsp_dict(bsps[bsp_k])
-
-                val_dict = {table_info.blob_key_s: annotation_data,
-                            table_info.user_id_key_s: key_utils.serialize_key(user_id)}
-
-                # Write data
-                rows.extend(self._write_annotation_data(annotation_id,
-                                                        val_dict,
-                                                        bsp_dict,
-                                                    time_stamp=time_stamp))
+            success_marker.append(True)
 
             if len(rows) >= bulk_block_size:
                 self.bulk_write(rows)
                 rows = []
 
-        if len(rows) > 0:
+        if len(rows) >= bulk_block_size:
             self.bulk_write(rows)
+            rows = []
 
-    def delete_annotations(self, user_id, annotation_ids, bulk_block_size=2000):
-        """ Deletes nnotations from database
+        return success_marker
 
-        :param user_id: str
-        :param annotation_ids: list
-            list of annotation ids (data)
-        :param bulk_block_size: int
-        """
 
-        annotations = [[annotation_id, None, None] for annotation_id in annotation_ids]
-
-        self.update_annotations(user_id, annotations,
-                                bulk_block_size=bulk_block_size)
-
+    # def update_annotations(self, annotations, user_id,
+    #                        bulk_block_size=10000):
+    #     """ Updates existing annotations
+    #
+    #     :param annotation_ids: list of uint64s
+    #         annotations (key: annotation id)
+    #     :param user_id: str
+    #     :return: bool
+    #         success
+    #     """
+    #
+    #     time_stamp = datetime.datetime.utcnow()
+    #
+    #     # TODO: lock
+    #
+    #     rows = []
+    #     success_marker = []
+    #     new_sv_mapping_dict = collections.defaultdict(list)
+    #     old_sv_mapping_dict = collections.defaultdict(list)
+    #
+    #     for annotation in annotations:
+    #         annotation_id, sv_ids, annotation_data = annotation
+    #
+    #         old_sv_ids = self.get_annotation_sv_ids(annotation_id)
+    #
+    #         if old_sv_ids is None:
+    #             success_marker.append(False)
+    #             continue
+    #
+    #         if len(old_sv_ids) == 0:
+    #             success_marker.append(False)
+    #             continue
+    #
+    #         sv_id_mask = old_sv_ids != sv_ids
+    #
+    #         for sv_id in np.unique(sv_ids[sv_id_mask]):
+    #             new_sv_mapping_dict[sv_id].append(annotation_id)
+    #
+    #         for sv_id in np.unique(old_sv_ids[sv_id_mask]):
+    #             old_sv_mapping_dict[sv_id].append(annotation_id)
+    #
+    #         rows = [self._write_annotation_data(annotation_id,
+    #                                             annotation_data,
+    #                                             sv_ids,
+    #                                             time_stamp=time_stamp)]
+    #
+    #         success_marker.append(True)
+    #
+    #         if len(rows) >= bulk_block_size / 3:
+    #             rows.extend(self._write_sv_mapping(old_sv_mapping_dict,
+    #                                                add=False,
+    #                                                is_new=False))
+    #             rows.extend(self._write_sv_mapping(new_sv_mapping_dict,
+    #                                                add=True,
+    #                                                is_new=False))
+    #
+    #             self.bulk_write(rows)
+    #
+    #             new_sv_mapping_dict = collections.defaultdict(list)
+    #             old_sv_mapping_dict = collections.defaultdict(list)
+    #             rows = []
+    #
+    #     if len(rows) > 0:
+    #         rows.extend(self._write_sv_mapping(old_sv_mapping_dict,
+    #                                            add=False,
+    #                                            is_new=False))
+    #         rows.extend(self._write_sv_mapping(new_sv_mapping_dict,
+    #                                            add=True,
+    #                                            is_new=False))
+    #
+    #         self.bulk_write(rows)
+    #
+    #     return success_marker
 
     def get_annotation(self, annotation_id, time_stamp=None):
         """ Reads the data and bsps of a single annotation object
@@ -792,20 +767,17 @@ class AnnotationDB(object):
 
         bsps = {}
         bin_data = None
-        user_id = None
         for k in cells:
             value = cells[k][0].value
             if k == table_info.blob_key_s:
                 bin_data = value
-            elif k == table_info.user_id_key_s:
-                user_id = key_utils.deserialize_key(value)
             else:
                 bsps[key_utils.deserialize_key(k)] = np.frombuffer(value, dtype=np.uint64)[0]
 
         if bin_data is None:
             return None, None
 
-        return bin_data, bsps, user_id
+        return bin_data, bsps
 
     def get_bsp(self, bsp_id, time_stamp=None):
         """ Reads the data and bsps of a single annotation object
