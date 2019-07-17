@@ -90,8 +90,12 @@ class AnnotationMetaDB(object):
         :return: dict
         """
         amdb_info = {"instance_id": self.instance_id,
-                     "project_id": self.project_id,
-                     "credentials": self.client.credentials}
+                     "project_id": self.project_id}
+
+        try:
+            amdb_info["credentials"] = self.client.credentials
+        except:
+            amdb_info["credentials"] = self.client._credentials
 
         return amdb_info
 
