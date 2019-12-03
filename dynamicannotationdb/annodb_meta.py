@@ -2,9 +2,8 @@ import numpy as np
 import time
 import datetime
 import os
-
-from google.cloud import bigtable
-
+from sqlalchemy import create_engine
+from emannotationschemas import models as em_models
 from dynamicannotationdb.annodb import AnnotationDB
 
 
@@ -24,34 +23,16 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = \
 class AnnotationMetaDB(object):
     """ Manages annotations from all types and datasets """
 
-    def __init__(self, client=None, instance_id='pychunkedgraph',
-                 project_id="neuromancer-seung-import", credentials=None):
+    def __init__(self, sql_uri):
 
-        if client is not None:
-            self._client = client
-        else:
-            self._client = bigtable.Client(project=project_id, admin=True,
-                                           credentials=credentials)
-
-        self._instance = self.client.instance(instance_id)
+        self.sql_uri = sql_uri
+        self.engine = create_engine(self.sql_uri, echo=False)
+        self._SessionMaker = sessionmaker(
+                bind=self.sqlalchemy_engine)
+        self._session = self._SessionMaker()
 
         self._loaded_tables = {}
 
-    @property
-    def client(self):
-        return self._client
-
-    @property
-    def instance(self):
-        return self._instance
-
-    @property
-    def instance_id(self):
-        return self.instance.instance_id
-
-    @property
-    def project_id(self):
-        return self.client.project
 
     def _is_loaded(self, table_id):
         """ Checks whether table_id is in _loaded_tables
@@ -73,8 +54,7 @@ class AnnotationMetaDB(object):
             return True
 
         try:
-            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
-                                                         client=self.client)
+            self._loaded_tables[table_id] = AnnotationDB(sql_uri=self.sql_uri)
             return True
         except:
             if table_id in self.get_existing_tables():
@@ -95,9 +75,8 @@ class AnnotationMetaDB(object):
         table_id = build_table_id(dataset_name, table_name)
 
         if table_id in self.get_existing_tables():
-            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
-                                                         client=self.client)
-            self._loaded_tables[table_id].table.delete()
+            self._loaded_tables[table_id] = AnnotationDB(sql_uri=self.sql_uri)
+            self._loaded_tables[table_id].delete_table()
             del self._loaded_tables[table_id]
             return True
         else:
@@ -137,13 +116,7 @@ class AnnotationMetaDB(object):
 
         :return: dict
         """
-        amdb_info = {"instance_id": self.instance_id,
-                     "project_id": self.project_id}
-
-        try:
-            amdb_info["credentials"] = self.client.credentials
-        except:
-            amdb_info["credentials"] = self.client._credentials
+        amdb_info = {"sql_uri": self.sql_uri}
 
         return amdb_info
 
@@ -176,20 +149,12 @@ class AnnotationMetaDB(object):
 
         :return: list
         """
-        tables = self.instance.list_tables()
-
+        tables = self._session.query(em_models.AnalysisTable).all()
+        
         annotation_tables = []
-        for table_path in tables:
-            table_id = table_path.name.split("/")[-1]
-            if table_id.startswith("annov1__"):
-                table_dataset_name = get_dataset_name_from_table_id(table_id)
-
-                if dataset_name is not None:
-                    if table_dataset_name != dataset_name:
-                        continue
-
-                # table_name = get_table_name_from_table_id(table_id)
-                annotation_tables.append(table_id)
+        for table in tables:
+            table_id = table.tablename
+            annotation_tables.append(table_id)
 
         return annotation_tables
 
@@ -197,7 +162,6 @@ class AnnotationMetaDB(object):
         """ Collects annotation_types of existing tables
 
         Annotation tables start with `anno`
-
         :return: list
         """
         metadata_list = []
