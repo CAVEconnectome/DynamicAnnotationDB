@@ -4,18 +4,7 @@ import time
 import datetime
 import os
 import pytz
-
-# from . import multiprocessing_utils as mu
-from google.api_core.retry import Retry, if_exception_type
-from google.api_core.exceptions import Aborted, DeadlineExceeded, \
-    ServiceUnavailable
-from google.cloud import bigtable
-from google.auth import credentials
-from google.cloud.bigtable.row_filters import TimestampRange, \
-    TimestampRangeFilter, ColumnRangeFilter, ValueRangeFilter, RowFilterChain, \
-    ColumnQualifierRegexFilter, RowFilterUnion, ConditionalRowFilter, \
-    PassAllFilter, BlockAllFilter
-from google.cloud.bigtable.column_family import MaxVersionsGCRule
+import sqlalchemy
 
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
@@ -35,15 +24,19 @@ class AnnotationDB(object):
     """ Manages annotations from a single annotation type and dataset """
 
     def __init__(self, table_id: str,
-                 instance_id: str = "pychunkedgraph",
-                 project_id: str = "neuromancer-seung-import",
-                 chunk_size: Tuple[int, int, int] = None,
-                 schema_name: str = None,
-                 credentials: Optional[credentials.Credentials] = None,
-                 client: bigtable.Client = None,
-                 is_new: bool = False):
+                       sql_uri: str = None,
+                       schema_name: str = None,
+                       chunk_size: Tuple[int, int, int] = None,
+                       lookup_mip_resolution: Tuple[int,int,int] = None,
+                       user_id: str = None,
+                       instance_id: str = None,
+                       project_id: str = None,
+                       materialize_table: str = None,
+                       additional_metadata= None,
+                       credentials: Optional[credentials.Credentials] = None,
+                       is_new: bool = False):
 
-        if client is not None:
+        if sql_uri is not None:
             self._client = client
         else:
             self._client = bigtable.Client(project=project_id, admin=True,
@@ -754,8 +747,7 @@ class AnnotationDB(object):
         # Adjust time_stamp to bigtable precision
         time_stamp -= datetime.timedelta(
             microseconds=time_stamp.microsecond % 1000)
-
-        time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
+        posts = Post.query.filter(Post.post_time <= end).filter(Post.post_time >= start)        time_filter = TimestampRangeFilter(TimestampRange(end=time_stamp))
 
         row = self.table.read_row(key_utils.serialize_uint64(annotation_id),
                                   filter_=time_filter)

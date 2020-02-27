@@ -2,7 +2,7 @@ import numpy as np
 import time
 import datetime
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, sessionmaker
 from emannotationschemas import models as em_models
 from dynamicannotationdb.annodb import AnnotationDB
 
@@ -26,7 +26,7 @@ class AnnotationMetaDB(object):
     def __init__(self, sql_uri):
 
         self.sql_uri = sql_uri
-        self.engine = create_engine(self.sql_uri, echo=False)
+        self.sqlalchemy_engine = create_engine(self.sql_uri, echo=False)
         self._SessionMaker = sessionmaker(
                 bind=self.sqlalchemy_engine)
         self._session = self._SessionMaker()
@@ -196,7 +196,7 @@ class AnnotationMetaDB(object):
 
         if table_id not in self.get_existing_tables():
             self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
-                                                         client=self.client,
+                                                         sql_uri=self.sql_uri,
                                                          schema_name=schema_name,
                                                          chunk_size=chunk_size,
                                                          lookup_mip_resolution=lookup_mip_resolution,
@@ -204,6 +204,7 @@ class AnnotationMetaDB(object):
                                                          materialize_table=materialize_table,
                                                          additional_metadata=additional_metadata,
                                                          is_new=True)
+
             return True
         else:
             return False
