@@ -73,10 +73,11 @@ class AnnotationMetaDB(object):
             return True
 
         try:
-            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id,
-                                                         client=self.client)
+            self._loaded_tables[table_id] = AnnotationDB(table_id=table_id, client=self.client)
             return True
-        except:
+        except Exception as e:
+            print(e)
+
             if table_id in self.get_existing_tables():
                 print("Could not load table")
                 return False
@@ -127,6 +128,7 @@ class AnnotationMetaDB(object):
             return False
 
     def virtual_table(self, table_id):
+        print("VIRTUAL TABLE ")
         if not self._load_table(table_id):
             raise Exception("Cannot load table")
 
@@ -138,8 +140,12 @@ class AnnotationMetaDB(object):
         :return: dict
         """
         amdb_info = {"instance_id": self.instance_id,
-                     "project_id": self.project_id,
-                     "credentials": self.client.credentials}
+                     "project_id": self.project_id}
+
+        try:
+            amdb_info["credentials"] = self.client.credentials
+        except:
+            amdb_info["credentials"] = self.client._credentials
 
         return amdb_info
 

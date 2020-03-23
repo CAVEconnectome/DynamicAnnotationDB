@@ -213,7 +213,10 @@ class AnnotationDB(object):
         row = self.table.read_row(key_utils.serialize_key("params"))
 
         if row is None or ser_param_key not in row.cells[self.data_family_id]:
-            assert value is not None
+            if value is None and not mandatory:
+                return None
+            elif value is None:
+                raise Exception()
 
             if param_key in ["schema_name", "user_id"]:
                 val_dict = {param_key: key_utils.serialize_key(value)}
@@ -267,7 +270,6 @@ class AnnotationDB(object):
             row.set_cell(column_family_id=column_family_id, column=column,
                          value=value, timestamp=time_stamp)
         return row
-
 
     def bulk_write(self, rows: Iterable[bigtable.row.DirectRow],
                    # root_ids: Optional[Union[np.uint64,
@@ -672,14 +674,14 @@ class AnnotationDB(object):
         id_range = self.get_unique_annotation_id_range(step=len(annotations))
 
         for i_annotation, annotation in enumerate(annotations):
-            bsps, annotation_data = annotation
+            _, annotation_data = annotation
 
             # Get unique ids
             annotation_id = id_range[i_annotation]
 
-            bsp_dict = {}
-            for bsp_k in bsps:
-                bsp_dict[bsp_k] = self._build_bsp_dict(bsps[bsp_k])
+            # bsp_dict = {}
+            # for bsp_k in bsps:
+            #     bsp_dict[bsp_k] = self._build_bsp_dict(bsps[bsp_k])
 
             val_dict = {table_info.blob_key_s: annotation_data,
                         table_info.user_id_key_s: key_utils.serialize_key(user_id)}
@@ -688,7 +690,7 @@ class AnnotationDB(object):
             # Write data
             rows.extend(self._write_annotation_data(annotation_id,
                                                     val_dict,
-                                                    bsp_dict,
+                                                    # bsp_dict,
                                                     time_stamp=time_stamp))
 
             if len(rows) >= bulk_block_size:
@@ -763,7 +765,6 @@ class AnnotationDB(object):
 
         self.update_annotations(user_id, annotations,
                                 bulk_block_size=bulk_block_size)
-
 
     def get_annotation(self, annotation_id, time_stamp=None):
         """ Reads the data and bsps of a single annotation object
