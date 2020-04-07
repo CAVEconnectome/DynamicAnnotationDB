@@ -27,12 +27,15 @@ def create_app(config=None):
     api.add_namespace(anno_api, path="/api/annotation")
 
     db.init_app(app)
-
+    
+    with app.app_context():
+        db.create_all()
+    
+    
     @app.route("/health")
     def health():
         return jsonify("healthy")
-
-        
+   
     @app.route("/site-map")
     def site_map():
         links = []
