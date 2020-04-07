@@ -1,5 +1,5 @@
 from sqlalchemy import Integer, Column, String, DateTime, BigInteger
-from dynamicannotationdb.flask_app import db
+from dynamicannotationdb import db
 from dynamicannotationdb.interface import AnnotationInterface
 
 
