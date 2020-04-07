@@ -18,7 +18,7 @@ def test_get_all(db: SQLAlchemy):
     db.session.add(test_table)
     db.session.commit()
 
-    results: List[Widget] = AnnotationService.get_all()
+    results: List[Annotation] = AnnotationService.get_all()
 
     assert len(results) == 1
     assert test_table in results
@@ -55,7 +55,7 @@ def test_delete_by_id(db: SQLAlchemy):
     AnnotationService.delete_by_id(1)
     db.session.commit()
 
-    results: List[Widget] = Annotation.query.all()
+    results: List[Annotation] = Annotation.query.all()
 
     assert len(results) == 0
     assert test_table not in results
@@ -68,7 +68,7 @@ def test_create(db: SQLAlchemy):
                                            description="Fake Annotation Table",
                                            created_on=str(created_time))
     AnnotationService.create(test_table)
-    results: List[Widget] = Annotation.query.all()
+    results: List[Annotation] = Annotation.query.all()
 
     assert len(results) == 1
 
