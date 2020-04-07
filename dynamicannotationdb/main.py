@@ -1,4 +1,4 @@
-from dynamicannotationdb.flask_app import create_app
+from dynamicannotationdb import create_app
 
 app = create_app()
 
