@@ -20,19 +20,6 @@ services:
         - 8080:8080
       links:
         - db
-    annotation:
-      image: 'annotation:tag'
-      build:
-        context: .
-        dockerfile: Dockerfile
-      ports:
-        - 80:80
-      volumes:
-        - ./dynamicannotationdb:/dynamicannotationdb
-      env_file:
-        - ./.env.dev 
-      depends_on:
-        - db
-
+        
 volumes:
   postgres_data:
