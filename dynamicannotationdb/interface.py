@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, func
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.automap import automap_base
@@ -9,6 +9,7 @@ from emannotationschemas.base import flatten_dict
 from emannotationschemas import models as em_models
 from datetime import datetime
 import logging
+import time
 
 
 class AnnotationDB:
@@ -331,7 +332,7 @@ class AnnotationDB:
         return False
 
     def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:
-        self.mapped_base = automap_base(self.base.metadata)
+        self.mapped_base = automap_base()
         self.mapped_base.prepare(self.engine, reflect=True)
         return self.mapped_base.classes[table_name]
 
