@@ -1,13 +1,7 @@
-marshmallow<=3.0.0
+marshmallow
 emannotationschemas
 sqlalchemy
-flask-sqlalchemy
-flask-restx
-flask-accepts
-flask-admin
-marshmallow-sqlalchemy
 psycopg2-binary
 geoalchemy2
-mypy_extensions
 pytz
 alembic
