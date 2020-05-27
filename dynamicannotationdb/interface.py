@@ -1,16 +1,15 @@
 from sqlalchemy import create_engine, inspect, func
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import ArgumentError
+from sqlalchemy.exc import ArgumentError, InvalidRequestError
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
-from marshmallow import INCLUDE
+from marshmallow import INCLUDE, EXCLUDE
 from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.base import flatten_dict
 from emannotationschemas import models as em_models
-from datetime import datetime
 import logging
+import datetime
 import time
-
 
 class AnnotationDB:
 
@@ -46,11 +45,12 @@ class AnnotationDB:
 
         self.session = sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
 
-        self._cached_session = None
         self.insp = inspect(self.engine)
-
+        
+        self._cached_session = None
         self._cached_tables = {}
-
+        self._cached_schemas = {}
+        
     @property
     def cached_session(self):
         if self._cached_session is None:
@@ -68,15 +68,15 @@ class AnnotationDB:
         self._cached_session = None
 
     def create_table(self, 
-                     dataset_name:str, 
+                     em_dataset_name:str, 
                      table_name: str, 
                      schema_type:str, 
                      metadata_dict: dict=None,
                      description: str=None,
                      user_id: str=None,
                      valid: bool=True):
-        """Create new annotation table. Checks if already exists and if cell segment
-        table exists. If cell segment table is missing for the dataset name it will be
+        """Create new annotation table. Checks if already exists. 
+        If it is missing for the given em_dataset name it will be
         created.
 
         Parameters
@@ -101,26 +101,34 @@ class AnnotationDB:
         valid : bool, optional
             Flags if table should be considered valid for analysis, by default True
         """
-        new_table_name = f"{dataset_name}_{table_name}"
-        cell_segement_table = f"{dataset_name}_cellsegment"
-        if new_table_name in self.get_existing_tables():
-            logging.info(f"Table creation failed: {new_table_name} already exists")
-            raise f"Table {new_table_name} Already Exists!"
+        new_table_name = f"{em_dataset_name}_{table_name}"
         
-        if cell_segement_table in self.get_existing_tables():
-            model = em_models.make_annotation_model(dataset_name,
-                                                    schema_type,
-                                                    table_name,
-                                                    metadata_dict,
-                                                    with_crud_columns=True)
-        else:
-            model = em_models.make_dataset_models(dataset_name,
-                                                  [(schema_type, table_name)],
-                                                  metadata_dict,
-                                                  with_crud_columns=True)
+        if new_table_name in self.get_existing_tables():
+            logging.warning(f"Table creation failed: {new_table_name} already exists")
+            
+        model = em_models.make_annotation_model(em_dataset_name,
+                                                table_name,
+                                                schema_type,
+                                                metadata_dict,
+                                                with_crud_columns=True)
 
         self.base.metadata.create_all(bind=self.engine)
 
+        AnnoMetadata = em_models.Metadata
+
+        metadata_dict = {
+            'schema_type': schema_type,
+            'table_name': f"{em_dataset_name}_{table_name}",
+            'valid': True,
+            'created': datetime.datetime.now(),
+            'description': description,
+            'user_id': None,
+        }
+        anno_metadata = AnnoMetadata(**metadata_dict)
+        
+        self.cached_session.add(anno_metadata)
+        self.commit_session()     
+        
         logging.info(f"Table: {new_table_name} created using {model} model")
 
     def get_table(self, table_name):
@@ -203,7 +211,7 @@ class AnnotationDB:
         Model = self.cached_table(table_id)
         return self.cached_session.query(Model).count()
 
-    def get_annotation(self, table_id: str, schema_name: str, anno_id: int, structure_data=False) -> dict:
+    def get_annotation(self, table_id: str, schema_name: str, anno_id: int) -> dict:
         """ Get signle annotation from database by
 
         Parameters
@@ -222,22 +230,29 @@ class AnnotationDB:
         dict
             annotation data
         """
-        Model = self.cached_table(table_id)
+        AnnotationModel = self.cached_table(table_id)
+        SegmentationModel = self.cached_table(f"{table_id}_segmentation")
+        try:
+            annotations, segmentation = self.cached_session.query(AnnotationModel, SegmentationModel).\
+                                        filter(AnnotationModel.id==anno_id).one()
 
-        annotations = self.cached_session.query(Model).filter(Model.id==anno_id).first()
+            if annotations:
+                anno_data = annotations.__dict__
+                seg_data = segmentation.__dict__
+                anno_data.pop('_sa_instance_state', None)
+                seg_data.pop('_sa_instance_state', None)
 
-        if structure_data:
-            data = annotations.__dict__
-            if data['_sa_instance_state']:
-                data.pop('_sa_instance_state')
+                data = {**anno_data, **seg_data}
 
-            FlatSchema = get_flat_schema(schema_name)
-            schema = FlatSchema()
-            return schema.load(data, unknown=INCLUDE)
+                FlatSchema = get_flat_schema(schema_name)
+                schema = FlatSchema(unknown=EXCLUDE)
+                return schema.load(data)
 
-        return annotations
+        except Exception as e:
+            logging.warning(f"No entry found for {anno_id}")
+            return
 
-    def insert_annotation(self, table_id: str, schema_name: str, annotations: dict, structure_data=True):
+    def insert_annotation(self, table_id: str, schema_name: str, annotations: dict, assign_id=False):
         """Insert single annotation by type and schema. Optionally will structure data
         by using flat schema.
 
@@ -250,23 +265,35 @@ class AnnotationDB:
             Type of schema to use, must be a valid type from EMAnnotationSchemas
 
         annotations : dict
-            Dictionary of signle annotation data. Must be flat dict unless structure_data flag is 
+            Dictionary of single annotation data. Must be flat dict unless structure_data flag is 
             set to True.
 
         structure_data : bool, optional
             Flag to flatten nested data dict, by default True
         """
-        Model = self.cached_table(table_id)
-        if structure_data:
-            annotations = self._get_flattened_schema_data(schema_name, annotations)
-        annotations['created'] = datetime.datetime.now()
+        AnnotationModel = self.cached_table(table_id)
+        SegmentationModel = self.cached_table(f"{table_id}_segmentation")
 
-        data = Model(**annotations)
+        annotation_data, segmentation_data = self._get_flattened_schema_data(schema_name, annotations)
 
-        self.cached_session.add(data)
-        self.commit_session()
+        annotation_data['created'] = datetime.datetime.now()
+        if assign_id:
+            annotation_data['id'] = annotations['id']
+        anno_data = AnnotationModel(**annotation_data)
+        try:
+            self.cached_session.add(anno_data)
+            self.cached_session.flush()
+       
+            seg_data = SegmentationModel(**segmentation_data)
+            seg_data.annotation_id = anno_data.id
+        
+            self.cached_session.add(seg_data)
+        except InvalidRequestError as e:
+            self.cached_session.rollback()
+        finally:
+            self.commit_session()
 
-    def update_annotation(self, table_id: str, schema_name: str, anno_id: int, new_annotations: dict, structure_data = True):
+    def update_annotation(self, table_id: str, schema_name: str, anno_id: int, new_annotations: dict):
         """Updates an annotation by inserting a new row. The original annotation will refer to the new row
         with a superceded_id. Does not update inplace.
 
@@ -286,21 +313,26 @@ class AnnotationDB:
         structure_data : bool, optional
             Flag to flatten nested data dict, by default True
         """
-        Model = self.cached_table(table_id)
+        AnnotationModel = self.cached_table(table_id)
+        SegmentationModel = self.cached_table(f"{table_id}_segmentation")
         
-        if structure_data:
-            new_annotations = self._get_flattened_schema_data(schema_name, new_annotations)
+        new_annotation, segmentation = self._get_flattened_schema_data(schema_name, new_annotations)
         
-        new_annotations['created'] = datetime.datetime.now()
+        new_annotation['created'] = datetime.datetime.now()
+        new_annotation['valid'] = True
 
-        new_data = Model(**new_annotations)
-
+        new_data = AnnotationModel(**new_annotation)
+      
+        old_anno, old_seg = self.cached_session.query(AnnotationModel, SegmentationModel).filter(AnnotationModel.id==anno_id).one()
+        
         self.cached_session.add(new_data)
         self.cached_session.flush()
-
-        old_annotation = self.cached_session.query(Model).filter(Model.id==anno_id).one()
-        old_annotation.superceded_id = new_data.id
-
+        
+        old_anno.superceded_id = new_data.id
+        old_anno.valid = False
+        
+        old_seg.annotation_id = new_data.id
+        
         self.commit_session()
 
     def delete_annotation(self, table_id: str, anno_id: int):
@@ -339,14 +371,19 @@ class AnnotationDB:
     def _get_flattened_schema_data(self, schema_name: str, data: dict) -> dict:
         schema_type = get_schema(schema_name)
         schema = schema_type(context={'postgis': True})
-        data = schema.load(data)
-
+        data = schema.load(data, unknown=EXCLUDE)
+       
         check_is_nested = (any(isinstance(i, dict) for i in data.values()))
         if check_is_nested:
             data = flatten_dict(data)
 
-        return data
+        flat_annotation_schema, flat_segmentation_schema = em_models.split_annotation_schema(schema_type)
 
+        return self._map_values_to_schema(data, flat_annotation_schema), self._map_values_to_schema(data, flat_segmentation_schema)
+
+    def _map_values_to_schema(self, data, schema):
+        return {key: data[key] for key, value in schema._declared_fields.items() if key in data} 
+          
     def _drop_all(self):
         self.base.metadata.reflect(bind=self.engine)
         self.base.metadata.drop_all(self.engine)
@@ -404,4 +441,3 @@ class AnnotationDB:
             if table_name in self.get_existing_tables():
                 logging.error(f"Could not load table: {key_error}")
             return False
-
