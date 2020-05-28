@@ -6,37 +6,49 @@ SQL_URI = "postgres://postgres:annodb@localhost:5432/annodb"
 # Create annotation db instance
 client = AnnotationDB(sql_uri=SQL_URI)
 
-dataset_name = 'test'
-table_name = 'soma_table'
-schema_name = 'microns_func_coreg'
-
-new_table = client.create_table(dataset_name=dataset_name, 
-                                schema_type=schema_name,
-                                table_name=table_name,
-                                metadata_dict = None, 
-                                description='Test description',
-                                user_id='foo@bar.com')
-print(new_table)
-
+dataset_name = 'minnie'
+table_name = 'synapse_test'
+schema_name = 'synapse'
 table_id = f"{dataset_name}_{table_name}"
 
-# get table info
-client.get_model_columns(table_id)
+test_table_description = "This is an example description for this table"
 
-# get tables by dataset
+new_table = client.create_table(dataset_name, 
+                                table_name, 
+                                schema_name,
+                                description=test_table_description,
+                                user_id='foo@bar.com')
+
+# get list of tables by em_dataset name
 tables = client.get_dataset_tables(dataset_name)
-print(tables)
+
+# Lets add a synapse
+
+synapse_data = {
+    'id': 65534332,
+    'pre_pt': {'position': [121,123,1232], 'supervoxel_id':  2344444, 'root_id': 4},
+    'ctr_pt': {'position': [121,123,1232]},
+    'post_pt':{'position': [333,555,5555], 'supervoxel_id':  3242424, 'root_id': 5},
+    'type': 'synapse',
+} 
 
 
-soma_data = {
-    'type': 'microns_func_coreg',
-    'pt': {'position':  [31, 31, 0]},
-    'func_id': 123456,
-}
+""" 
+insert new data, if assign_id is True, the Database PK will be overriden by the 'id' in
+synapse_data
+"""
+client.insert_annotation(table_id, schema_name, synapse_data, assign_id=False)
+# Get the newly inserted row
+client.get_annotation(table_id, schema_name, 1)
 
-client.insert_annotation(table_id, schema_name, soma_data)
 
+updated_synapse_data = {
+    'id': 65534332,
+    'pre_pt': {'position': [121,123,1232], 'supervoxel_id':  2344444, 'root_id': 4},
+    'ctr_pt': {'position': [121,123,1232]},
+    'post_pt':{'position': [555,555,5555], 'supervoxel_id':  3242424, 'root_id': 5},
+    'type': 'synapse',
+}  
 
-soma_annotation = client.get_annotation(table_id, schema_name, anno_id=1)
-
-print(soma_annotation)
+# Update annotation
+client.update_annotation(table_id, schema_name, 1, updated_synapse_data)
