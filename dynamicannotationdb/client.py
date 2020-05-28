@@ -6,6 +6,7 @@ class AnnotationDBMeta:
         
         self._client = AnnotationDB(sql_uri)
         self._table = None
+        self._cached_schemas = {}
 
     @property
     def session(self):
@@ -28,7 +29,7 @@ class AnnotationDBMeta:
     def get_table_metadata(self, table_name: str) -> dict:
         return self._client.get_table_metadata(table_name)
 
-    def get_existing_tables_metadata(self, table_name:str) ->  list(dict):
+    def get_existing_tables_metadata(self, table_name:str) ->  list:
         
         return [
             self.get_table_metadata(table_name=table_name)
