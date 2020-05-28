@@ -1,7 +1,8 @@
-marshmallow
+marshmallow==3.5.1
 emannotationschemas
 sqlalchemy
 psycopg2-binary
 geoalchemy2
 pytz
 alembic
+shapely
