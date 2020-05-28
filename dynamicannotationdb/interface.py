@@ -49,7 +49,6 @@ class AnnotationDB:
         
         self._cached_session = None
         self._cached_tables = {}
-        self._cached_schemas = {}
         
     @property
     def cached_session(self):
@@ -95,11 +94,11 @@ class AnnotationDB:
         valid : bool, optional
             Flags if table should be considered valid for analysis, by default True
         """
-        new_table_name = f"{em_dataset_name}_{table_name}"
+        table_name = f"{em_dataset_name}_{table_name}"
         
-        if new_table_name in self.get_existing_tables():
-            logging.warning(f"Table creation failed: {new_table_name} already exists")
-            
+        if table_name in self.get_existing_tables():
+            logging.warning(f"Table creation failed: {table_name} already exists")
+            return self.get_table(table_name)
         model = em_models.make_annotation_model(em_dataset_name,
                                                 table_name,
                                                 schema_type,
@@ -123,7 +122,7 @@ class AnnotationDB:
         self.cached_session.add(anno_metadata)
         self.commit_session()     
         
-        logging.info(f"Table: {new_table_name} created using {model} model at {creation_time}")
+        logging.info(f"Table: {table_name} created using {model} model at {creation_time}")
         return model
         
     def get_table(self, table_name):
