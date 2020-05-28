@@ -84,20 +84,14 @@ class AnnotationDB:
         dataset_name : str
             Name of dataset to prefix to table, if no cell segment table exists with 
             this name a new table will be generated.
-
         table_name : str
-
         schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
-
         metadata_dict : dict, optional
-
         description : str, optional
             Additional text to describe table, by default None
-
         user_id : str, optional
             by default None
-
         valid : bool, optional
             Flags if table should be considered valid for analysis, by default True
         """
@@ -115,12 +109,12 @@ class AnnotationDB:
         self.base.metadata.create_all(bind=self.engine)
 
         AnnoMetadata = em_models.Metadata
-
+        creation_time = datetime.datetime.now()
         metadata_dict = {
             'schema_type': schema_type,
             'table_name': f"{em_dataset_name}_{table_name}",
             'valid': True,
-            'created': datetime.datetime.now(),
+            'created': creation_time,
             'description': description,
             'user_id': None,
         }
@@ -129,12 +123,20 @@ class AnnotationDB:
         self.cached_session.add(anno_metadata)
         self.commit_session()     
         
-        logging.info(f"Table: {new_table_name} created using {model} model")
-
+        logging.info(f"Table: {new_table_name} created using {model} model at {creation_time}")
+        return model
+        
     def get_table(self, table_name):
         return self.cached_table(table_name)
 
-    def get_table_metadata(self, table_name):
+    def get_table_metadata(self, table_name: str):
+        AnnoMetadata = em_models.Metadata
+        metadata = []
+        for data in self.cached_session.query(AnnoMetadata).filter(AnnoMetadata.table_name==table_name).all():
+            metadata.append(data.__dict__)
+        return metadata
+
+    def get_table_sql_metadata(self, table_name):
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
 
@@ -168,13 +170,13 @@ class AnnotationDB:
                                         column['type']]))
         return model_columns
 
-
     def get_existing_tables(self):
-        """ Collects table_ids of existing tables
+        """ Collects table_ids keys of existing tables
 
-        Annotation tables start with `anno`
-
-        :return: list
+        Returns
+        -------
+        list
+            List of table_ids
         """
 
         tables = self.base.metadata.tables.keys()
@@ -185,13 +187,12 @@ class AnnotationDB:
 
 
     def cached_table(self, table_id: str) -> DeclarativeMeta:
-        """ Returns cached table 'DeclarativeMeta' callable for querying
+        """ Returns cached table 'DeclarativeMeta' callable for querying.
 
         Parameters
         ----------
         table_name : str
             Table name formatted in the form: "{dataset_name}_{table_name}"
-
         Returns
         -------
         DeclarativeMeta
@@ -212,16 +213,14 @@ class AnnotationDB:
         return self.cached_session.query(Model).count()
 
     def get_annotation(self, table_id: str, schema_name: str, anno_id: int) -> dict:
-        """ Get signle annotation from database by
+        """ Get single annotation from database by id.
 
         Parameters
         ----------
         table_id : str
             Table name formatted in the form: "{dataset_name}_{table_name}"
-
         schema_name : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
-
         anno_id : int
             annotation id 
 
@@ -253,23 +252,17 @@ class AnnotationDB:
             return
 
     def insert_annotation(self, table_id: str, schema_name: str, annotations: dict, assign_id=False):
-        """Insert single annotation by type and schema. Optionally will structure data
-        by using flat schema.
+        """Insert single annotation by type and schema. 
 
         Parameters
         ----------
         table_id : str
             Table name formatted in the form: "{dataset_name}_{table_name}"
-
         schema_name : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
-
         annotations : dict
             Dictionary of single annotation data. Must be flat dict unless structure_data flag is 
             set to True.
-
-        structure_data : bool, optional
-            Flag to flatten nested data dict, by default True
         """
         AnnotationModel = self.cached_table(table_id)
         SegmentationModel = self.cached_table(f"{table_id}_segmentation")
@@ -301,17 +294,11 @@ class AnnotationDB:
         ----------
         table_id : str
             Table name formatted in the form: "{dataset_name}_{table_name}"
-
         schema_name : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
-
         anno_id : int
             Primary key ID to select annotation for updating.
-
         new_annotations : [type], optional
-
-        structure_data : bool, optional
-            Flag to flatten nested data dict, by default True
         """
         AnnotationModel = self.cached_table(table_id)
         SegmentationModel = self.cached_table(f"{table_id}_segmentation")
@@ -389,7 +376,7 @@ class AnnotationDB:
         self.base.metadata.drop_all(self.engine)
 
     def _reset_table(self, dataset_name, table_name, n_retries=20, delay_s=5):
-        metadata = self.get_table_metadata(dataset_name, table_name)
+        metadata = self.get_table_sql_metadata(dataset_name, table_name)
 
         if self.drop_table(dataset_name=dataset_name,
                            table_name=table_name):
