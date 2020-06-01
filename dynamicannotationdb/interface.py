@@ -93,9 +93,7 @@ class AnnotationDB:
             by default None
         valid : bool, optional
             Flags if table should be considered valid for analysis, by default True
-        """
-        table_name = f"{em_dataset_name}_{table_name}"
-        
+        """        
         if table_name in self.get_existing_tables():
             logging.warning(f"Table creation failed: {table_name} already exists")
             return self.get_table(table_name)
@@ -130,10 +128,9 @@ class AnnotationDB:
 
     def get_table_metadata(self, table_name: str):
         AnnoMetadata = em_models.Metadata
-        metadata = []
-        for data in self.cached_session.query(AnnoMetadata).filter(AnnoMetadata.table_name==table_name).all():
-            metadata.append(data.__dict__)
-        return metadata
+        metadata = self.cached_session.query(AnnoMetadata).\
+                        filter(AnnoMetadata.table_name==table_name).first()
+        return metadata.__dict__
 
     def get_table_sql_metadata(self, table_name):
         self.base.metadata.reflect(bind=self.engine)
