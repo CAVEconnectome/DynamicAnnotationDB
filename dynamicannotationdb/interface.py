@@ -113,7 +113,7 @@ class AnnotationDB:
             'valid': True,
             'created': creation_time,
             'description': description,
-            'user_id': None,
+            'user_id': user_id,
         }
         anno_metadata = AnnoMetadata(**metadata_dict)
         
