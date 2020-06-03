@@ -85,10 +85,11 @@ class AnnotationDB:
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         metadata_dict : dict, optional
         """
-        table_id = f"{em_dataset_name}_{table_name}"        
+        table_id = f"{em_dataset_name}_{table_name}"      
+        
         if table_id in self.get_existing_tables():
-            logging.warning(f"Table creation failed: {table_name} already exists")
-            return self.get_table(table_name)
+            logging.warning(f"Table creation failed: {table_id} already exists")
+            return self.get_table_metadata(table_id)
             
         model = em_models.make_annotation_model(em_dataset_name,
                                                 table_name,
@@ -123,6 +124,7 @@ class AnnotationDB:
         AnnoMetadata = em_models.Metadata
         metadata = self.cached_session.query(AnnoMetadata).\
                         filter(AnnoMetadata.table_name==table_name).first()
+        metadata.__dict__.pop('_sa_instance_state')
         return metadata.__dict__
 
     def get_table_sql_metadata(self, table_name):
@@ -197,7 +199,7 @@ class AnnotationDB:
         Model = self.cached_table(table_id)
         return self.cached_session.query(func.count(Model.id)).scalar()
 
-    def get_annotation_table_info(self, table_id: str) -> int:
+    def get_annotation_table_size(self, table_id: str) -> int:
         Model = self.cached_table(table_id)
         return self.cached_session.query(Model).count()
 
