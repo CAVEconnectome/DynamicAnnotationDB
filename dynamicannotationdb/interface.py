@@ -70,10 +70,7 @@ class AnnotationDB:
                      em_dataset_name:str, 
                      table_name: str, 
                      schema_type:str, 
-                     metadata_dict: dict=None,
-                     description: str=None,
-                     user_id: str=None,
-                     valid: bool=True):
+                     metadata_dict: dict):
         """Create new annotation table. Checks if already exists. 
         If it is missing for the given em_dataset name it will be
         created.
@@ -87,16 +84,12 @@ class AnnotationDB:
         schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         metadata_dict : dict, optional
-        description : str, optional
-            Additional text to describe table, by default None
-        user_id : str, optional
-            by default None
-        valid : bool, optional
-            Flags if table should be considered valid for analysis, by default True
-        """        
-        if table_name in self.get_existing_tables():
+        """
+        table_id = f"{em_dataset_name}_{table_name}"        
+        if table_id in self.get_existing_tables():
             logging.warning(f"Table creation failed: {table_name} already exists")
             return self.get_table(table_name)
+            
         model = em_models.make_annotation_model(em_dataset_name,
                                                 table_name,
                                                 schema_type,
@@ -107,14 +100,14 @@ class AnnotationDB:
 
         AnnoMetadata = em_models.Metadata
         creation_time = datetime.datetime.now()
-        metadata_dict = {
+        
+        metadata_dict.update({
             'schema_type': schema_type,
             'table_name': f"{em_dataset_name}_{table_name}",
             'valid': True,
-            'created': creation_time,
-            'description': description,
-            'user_id': user_id,
-        }
+            'created': creation_time
+        })
+
         anno_metadata = AnnoMetadata(**metadata_dict)
         
         self.cached_session.add(anno_metadata)
