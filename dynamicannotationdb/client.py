@@ -39,16 +39,12 @@ class AnnotationDBMeta:
     def create_table(self, em_dataset_name:str, 
                            table_name: str, 
                            schema_type:str, 
-                           metadata_dict: dict=None,
-                           description: str=None,
-                           user_id: str=None):
+                           metadata_dict: dict):
         
         return self._client.create_table(em_dataset_name,
                                          table_name,
                                          schema_type,
-                                         metadata_dict,
-                                         description,
-                                         user_id)
+                                         metadata_dict)
 
     def insert_annotations(self, table_id:str, 
                                  schema_name:str, 
