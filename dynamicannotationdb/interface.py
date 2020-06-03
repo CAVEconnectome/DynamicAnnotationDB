@@ -103,18 +103,18 @@ class AnnotationDB:
         
         metadata_dict.update({
             'schema_type': schema_type,
-            'table_name': f"{em_dataset_name}_{table_name}",
+            'table_name': table_id,
             'valid': True,
             'created': creation_time
         })
-
+        logging.info(f"Metadata for table: {table_id} is {metadata_dict}")
         anno_metadata = AnnoMetadata(**metadata_dict)
         
         self.cached_session.add(anno_metadata)
         self.commit_session()     
         
         logging.info(f"Table: {table_name} created using {model} model at {creation_time}")
-        return model
+        return {"Created Succesfully": True, "Table Name": table_name, "Description": metadata_dict['description']}
         
     def get_table(self, table_name):
         return self.cached_table(table_name)
