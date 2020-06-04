@@ -236,7 +236,8 @@ class AnnotationDB:
             for anno, seg in annotations: 
                 anno_data = anno.__dict__
                 seg_data = seg.__dict__
-                
+                anno_data['created'] = str(anno_data.get('created'))
+                anno_data['deleted'] = str(anno_data.get('deleted'))
                 anno_data.pop('_sa_instance_state', None)
                 seg_data.pop('_sa_instance_state', None)
                 merged_data = {**anno_data, **seg_data}
@@ -283,7 +284,7 @@ class AnnotationDB:
             formatted_seg_data.append(segmentation_data)
             
         annos = [AnnotationModel(**annotation_data) for annotation_data in formatted_anno_data]
-        
+
         try:
             self.cached_session.add_all(annos)
             
