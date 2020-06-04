@@ -7,6 +7,7 @@ from marshmallow import INCLUDE, EXCLUDE
 from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.base import flatten_dict
 from emannotationschemas import models as em_models
+from typing import List
 import logging
 import datetime
 import time
@@ -203,8 +204,8 @@ class AnnotationDB:
         Model = self.cached_table(table_id)
         return self.cached_session.query(Model).count()
 
-    def get_annotation(self, table_id: str, schema_name: str, anno_id: int) -> dict:
-        """ Get single annotation from database by id.
+    def get_annotations(self, table_id: str, schema_name: str, anno_ids: List[int]) -> dict:
+        """ Get list of annotations from database by id.
 
         Parameters
         ----------
@@ -217,33 +218,39 @@ class AnnotationDB:
 
         Returns
         -------
-        dict
-            annotation data
+        list
+            list of annotation data dicts
         """
         AnnotationModel = self.cached_table(table_id)
         SegmentationModel = self.cached_table(f"{table_id}_segmentation")
-        try:
-            annotations, segmentation = self.cached_session.query(AnnotationModel, SegmentationModel).\
-                                        filter(AnnotationModel.id==anno_id).one()
+        
+        annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
+                                          join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
+                                          filter(AnnotationModel.id.in_([x for x in anno_ids])).all()
 
-            if annotations:
-                anno_data = annotations.__dict__
-                seg_data = segmentation.__dict__
+        try:
+            FlatSchema = get_flat_schema(schema_name)
+            schema = FlatSchema(unknown=INCLUDE)
+            data = []
+            
+            for anno, seg in annotations: 
+                anno_data = anno.__dict__
+                seg_data = seg.__dict__
+                
                 anno_data.pop('_sa_instance_state', None)
                 seg_data.pop('_sa_instance_state', None)
+                merged_data = {**anno_data, **seg_data}
+                data.append(merged_data)
 
-                data = {**anno_data, **seg_data}
-
-                FlatSchema = get_flat_schema(schema_name)
-                schema = FlatSchema(unknown=EXCLUDE)
-                return schema.load(data)
-
+            return schema.load(data, many=True)
+            
         except Exception as e:
-            logging.warning(f"No entry found for {anno_id}")
+            logging.warning(f"No entries found for {anno_ids}")
             return
 
-    def insert_annotation(self, table_id: str, schema_name: str, annotations: dict, assign_id=False):
-        """Insert single annotation by type and schema. 
+    def insert_annotations(self, table_id: str, schema_name: str, annotations: List[dict]):
+        """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
+        using a bulk insert script.
 
         Parameters
         ----------
@@ -255,23 +262,36 @@ class AnnotationDB:
             Dictionary of single annotation data. Must be flat dict unless structure_data flag is 
             set to True.
         """
+        if len(annotations) > 10_000:
+            return f"WARNING: Inserting {len(annotations)} annotations is too large."
+        
+        formatted_anno_data = []
+        formatted_seg_data = []
+        
         AnnotationModel = self.cached_table(table_id)
         SegmentationModel = self.cached_table(f"{table_id}_segmentation")
-
-        annotation_data, segmentation_data = self._get_flattened_schema_data(schema_name, annotations)
-
-        annotation_data['created'] = datetime.datetime.now()
-        if assign_id:
-            annotation_data['id'] = annotations['id']
-        anno_data = AnnotationModel(**annotation_data)
-        try:
-            self.cached_session.add(anno_data)
-            self.cached_session.flush()
-       
-            seg_data = SegmentationModel(**segmentation_data)
-            seg_data.annotation_id = anno_data.id
         
-            self.cached_session.add(seg_data)
+        for annotation in annotations:
+            
+            annotation_data, segmentation_data = self._get_flattened_schema_data(schema_name, annotation)
+            if annotation.get('id'):
+                annotation_data['id'] = annotation['id']
+                
+            annotation_data['created'] = datetime.datetime.now()
+            
+            formatted_anno_data.append(annotation_data)
+            formatted_seg_data.append(segmentation_data)
+            
+        annos = [AnnotationModel(**annotation_data) for annotation_data in formatted_anno_data]
+        
+        try:
+            self.cached_session.add_all(annos)
+            
+            self.cached_session.flush()
+
+            segs = [SegmentationModel(**segmentation_data, annotation_id=anno.id) for segmentation_data, anno in zip(formatted_seg_data, annos)]
+                    
+            self.cached_session.add_all(segs)
         except InvalidRequestError as e:
             self.cached_session.rollback()
         finally:
