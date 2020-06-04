@@ -51,13 +51,13 @@ class AnnotationDBMeta:
                                  annotations: dict, 
                                  assign_id: bool=False):
 
-        return self._client.insert_annotation(table_id,
+        return self._client.insert_annotations(table_id,
                                        schema_name,
                                        annotations)
 
     def get_annotation_data(self, table_id: str, schema_name: str, anno_id: int):
 
-        return self._client.get_annotation(table_id,
+        return self._client.get_annotations(table_id,
                                            schema_name,
                                            anno_id)
 
@@ -73,3 +73,4 @@ class AnnotationDBMeta:
 
     def delete_annotation(self, table_id: str, anno_id: int):
         self._client.delete_annotation(table_id, anno_id)
+        
