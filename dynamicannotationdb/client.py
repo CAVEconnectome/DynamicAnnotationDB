@@ -36,6 +36,9 @@ class AnnotationDBMeta:
             for table_id in self._client.get_dataset_tables(table_name)
         ]  
     
+    def get_annotation_table_length(self, table_id: str) -> int:
+        return self._client.get_annotation_table_size(table_id)
+
     def create_table(self, em_dataset_name:str, 
                            table_name: str, 
                            schema_type:str, 
@@ -73,4 +76,3 @@ class AnnotationDBMeta:
 
     def delete_annotation(self, table_id: str, anno_id: int):
         self._client.delete_annotation(table_id, anno_id)
-        
