@@ -1,5 +1,5 @@
 from dynamicannotationdb.interface import AnnotationDB
-
+import json
 
 class AnnotationDBMeta:
     def __init__(self, sql_uri: str):
@@ -51,12 +51,14 @@ class AnnotationDBMeta:
 
     def insert_annotations(self, table_id:str, 
                                  schema_name:str, 
-                                 annotations: dict, 
+                                 annotations: list, 
                                  assign_id: bool=False):
+        
+        data = [json.loads(annotation) for annotation in annotations]
 
         return self._client.insert_annotations(table_id,
                                        schema_name,
-                                       annotations)
+                                       data)
 
     def get_annotation_data(self, table_id: str, schema_name: str, anno_id: int):
 
