@@ -54,11 +54,9 @@ class AnnotationDBMeta:
                                  annotations: list, 
                                  assign_id: bool=False):
         
-        data = [json.loads(annotation) for annotation in annotations]
-
         return self._client.insert_annotations(table_id,
-                                       schema_name,
-                                       data)
+                                               schema_name,
+                                               annotations)
 
     def get_annotation_data(self, table_id: str, schema_name: str, anno_id: int):
 
