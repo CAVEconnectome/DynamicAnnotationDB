@@ -49,6 +49,9 @@ class AnnotationDBMeta:
                                          schema_type,
                                          metadata_dict)
 
+    def drop_table(self, table_name: str) -> bool:
+        return self._client.drop_table(table_name)
+
     def insert_annotations(self, table_id:str, 
                                  schema_name:str, 
                                  annotations: list, 
