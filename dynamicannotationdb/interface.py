@@ -353,12 +353,13 @@ class AnnotationDB:
         self.commit_session()
 
     def drop_table(self, table_name: str):
-        table = self.base.metadata.tables.get(table_name)
-        if table is not None:
+        anno_table = self.base.metadata.tables.get(table_name)
+        seg_table = self.base.metadata.tables.get(f"{table_name}_segmentation")
+        if all(v is not None for v in [anno_table, seg_table]):
             logging.info(f'Deleting {table_name} table')
-            self.base.metadata.drop_all(self.engine, [table], checkfirst=True)
-            if self._is_cached(table):
-                del self.cached_table[table]
+            self.base.metadata.drop_all(self.engine, [anno_table, seg_table], checkfirst=True)
+            if self._is_cached(anno_table):
+                del self.cached_table[anno_table], self.cached_table[seg_table]
             return True
         return False
 
@@ -390,8 +391,7 @@ class AnnotationDB:
     def _reset_table(self, dataset_name, table_name, n_retries=20, delay_s=5):
         metadata = self.get_table_sql_metadata(dataset_name, table_name)
 
-        if self.drop_table(dataset_name=dataset_name,
-                           table_name=table_name):
+        if self.drop_table(table_name=table_name):
             for _ in range(n_retries):
                 time.sleep(delay_s)
                 try:
