@@ -90,7 +90,6 @@ class AnnotationDB:
         
         if table_id in self.get_existing_tables():
             logging.warning(f"Table creation failed: {table_id} already exists")
-            return self.get_table_metadata(table_id)
             
         model = em_models.make_annotation_model(em_dataset_name,
                                                 table_name,
