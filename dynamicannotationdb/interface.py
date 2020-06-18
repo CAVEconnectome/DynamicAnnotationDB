@@ -7,6 +7,7 @@ from marshmallow import INCLUDE, EXCLUDE
 from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.base import flatten_dict
 from emannotationschemas import models as em_models
+from dynamicannotationdb.key_utils import build_table_id
 from typing import List
 import logging
 import datetime
@@ -121,10 +122,11 @@ class AnnotationDB:
     def get_table(self, table_name):
         return self.cached_table(table_name)
 
-    def get_table_metadata(self, table_name: str):
+    def get_table_metadata(self, dataset_name: str, table_name: str):
         AnnoMetadata = em_models.Metadata
         metadata = self.cached_session.query(AnnoMetadata).\
-                        filter(AnnoMetadata.table_name==table_name).first()
+                        filter(AnnoMetadata.table_name==table_name).\
+                        filter(AnnoMetadata.dataset_name == dataset_name).first()
         metadata.__dict__.pop('_sa_instance_state')
         return metadata.__dict__
 
@@ -133,11 +135,11 @@ class AnnotationDB:
         return self.base.metadata.tables[table_name]
 
     def get_dataset_tables(self, dataset_name: str):
-        tables = self.base.metadata.tables.keys()
-        if tables:
-            return list(filter(lambda x: x.startswith(f"{dataset_name}_"), tables))
-        else:
-            return None        
+        AnnoMetadata = em_models.Metadata
+        metadata = self.cached_session.query(AnnoMetadata).\
+                        filter(AnnoMetadata.dataset_name==dataset_name).all()
+        return [m.table_name for m in metadata]
+         
 
     def get_model_columns(self, table_id: str) -> list:
         """ Return list of column names and types of a given table
@@ -170,13 +172,9 @@ class AnnotationDB:
         list
             List of table_ids
         """
-
-        tables = self.base.metadata.tables.keys()
-        if tables:
-            return list(tables)
-        else:
-            return None
-
+        AnnoMetadata = em_models.Metadata
+        metadata = self.cached_session.query(AnnoMetadata).all()
+        return [build_table_id(m.dataset_name, m.table_name) for m in metadata]
 
     def cached_table(self, table_id: str) -> DeclarativeMeta:
         """ Returns cached table 'DeclarativeMeta' callable for querying.

@@ -25,14 +25,17 @@ class AnnotationDBMeta:
 
     def get_existing_tables(self):
         return self._client.get_existing_tables()
-        
-    def get_table_metadata(self, table_name: str) -> dict:
-        return self._client.get_table_metadata(table_name)
 
-    def get_existing_tables_metadata(self, table_name:str) ->  list:
+    def get_dataset_tables(self, dataset_name: str):
+        return self._client.get_dataset_tables(dataset_name=dataset_name)
+          
+    def get_table_metadata(self, dataset_name: str, table_name: str) -> dict:
+        return self._client.get_table_metadata(dataset_name, table_name)
+
+    def get_existing_tables_metadata(self, dataset_name:str, table_name:str) ->  list:
         
         return [
-            self.get_table_metadata(table_name=table_name)
+            self.get_table_metadata(dataset_name, table_name=table_name)
             for table_id in self._client.get_dataset_tables(table_name)
         ]  
     
