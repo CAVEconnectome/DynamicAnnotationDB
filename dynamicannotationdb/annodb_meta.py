@@ -3,7 +3,7 @@ import time
 import datetime
 import os
 from sqlalchemy import create_engine, sessionmaker
-from emannotationschemas import models as em_models
+from dynamicannotationdb.models import Metadata
 from dynamicannotationdb.annodb import AnnotationDB
 
 
@@ -18,6 +18,7 @@ LOCK_EXPIRED_TIME_DELTA = datetime.timedelta(minutes=3, seconds=00)
 # Setting environment wide credential path
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = \
     HOME + "/.cloudvolume/secrets/google-secret.json"
+
 
 
 class AnnotationMetaDB(object):

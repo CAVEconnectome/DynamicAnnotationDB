@@ -1,6 +1,4 @@
 from typing import Iterable, Dict
-from google.cloud import bigtable
-
 import numpy as np
 
 
