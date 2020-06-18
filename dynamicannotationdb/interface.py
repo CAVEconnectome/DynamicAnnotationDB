@@ -87,7 +87,7 @@ class AnnotationDB:
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         metadata_dict : dict, optional
         """
-        table_id = f"{em_dataset_name}_{table_name}"      
+        table_id = build_table_id(em_dataset_name, table_name) 
         
         if table_id in self.get_existing_tables():
             logging.warning(f"Table creation failed: {table_id} already exists")
