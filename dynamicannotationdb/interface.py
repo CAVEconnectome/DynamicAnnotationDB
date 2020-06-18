@@ -8,6 +8,7 @@ from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.base import flatten_dict
 from emannotationschemas import models as em_models
 from dynamicannotationdb.key_utils import build_table_id
+from dynamicannotationdb.models import Metadata as AnnoMetadata
 from typing import List
 import logging
 import datetime
@@ -101,7 +102,6 @@ class AnnotationDB:
 
         self.base.metadata.create_all(bind=self.engine)
 
-        AnnoMetadata = em_models.Metadata
         creation_time = datetime.datetime.now()
         
         metadata_dict.update({
@@ -123,7 +123,6 @@ class AnnotationDB:
         return self.cached_table(table_name)
 
     def get_table_metadata(self, dataset_name: str, table_name: str):
-        AnnoMetadata = em_models.Metadata
         metadata = self.cached_session.query(AnnoMetadata).\
                         filter(AnnoMetadata.table_name==table_name).\
                         filter(AnnoMetadata.dataset_name == dataset_name).first()
@@ -135,7 +134,6 @@ class AnnotationDB:
         return self.base.metadata.tables[table_name]
 
     def get_dataset_tables(self, dataset_name: str):
-        AnnoMetadata = em_models.Metadata
         metadata = self.cached_session.query(AnnoMetadata).\
                         filter(AnnoMetadata.dataset_name==dataset_name).all()
         return [m.table_name for m in metadata]
@@ -172,7 +170,6 @@ class AnnotationDB:
         list
             List of table_ids
         """
-        AnnoMetadata = em_models.Metadata
         metadata = self.cached_session.query(AnnoMetadata).all()
         return [build_table_id(m.dataset_name, m.table_name) for m in metadata]
 
