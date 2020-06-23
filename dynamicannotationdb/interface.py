@@ -27,8 +27,6 @@ class AnnotationDB:
         create_metadata : bool, optional
             Creates additional columns on new tables for CRUD operations, by default True
         """
-        if not sql_uri:
-            return
 
         try:
             self.engine = create_engine(sql_uri,
@@ -70,7 +68,7 @@ class AnnotationDB:
         self._cached_session = None
 
     def create_table(self, 
-                     em_dataset_name:str, 
+                     aligned_volume: str,
                      table_name: str, 
                      schema_type:str, 
                      metadata_dict: dict):
@@ -80,7 +78,7 @@ class AnnotationDB:
 
         Parameters
         ----------
-        dataset_name : str
+        aligned_volume : str
             Name of dataset to prefix to table, if no cell segment table exists with 
             this name a new table will be generated.
         table_name : str
@@ -88,12 +86,12 @@ class AnnotationDB:
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         metadata_dict : dict, optional
         """
-        table_id = build_table_id(em_dataset_name, table_name) 
+        table_id = build_table_id(aligned_volume, table_name) 
         
         if table_id in self.get_existing_tables():
             logging.warning(f"Table creation failed: {table_id} already exists")
             
-        model = em_models.make_annotation_model(em_dataset_name,
+        model = em_models.make_annotation_model(aligned_volume,
                                                 table_name,
                                                 schema_type,
                                                 metadata_dict,
@@ -121,10 +119,10 @@ class AnnotationDB:
     def get_table(self, table_name):
         return self.cached_table(table_name)
 
-    def get_table_metadata(self, dataset_name: str, table_name: str):
+    def get_table_metadata(self, aligned_volume: str, table_name: str):
         metadata = self.cached_session.query(AnnoMetadata).\
                         filter(AnnoMetadata.table_name==table_name).\
-                        filter(AnnoMetadata.dataset_name == dataset_name).first()
+                        filter(AnnoMetadata.aligned_volume == aligned_volume).first()
         metadata.__dict__.pop('_sa_instance_state')
         return metadata.__dict__
 
@@ -132,9 +130,9 @@ class AnnotationDB:
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
 
-    def get_dataset_tables(self, dataset_name: str):
+    def get_aligned_volume_tables(self, aligned_volume: str):
         metadata = self.cached_session.query(AnnoMetadata).\
-                        filter(AnnoMetadata.dataset_name==dataset_name).all()
+                        filter(AnnoMetadata.aligned_volume==aligned_volume).all()
         return [m.table_name for m in metadata]
          
 
@@ -144,7 +142,7 @@ class AnnotationDB:
         Parameters
         ----------
         table_id : str
-            Table name formatted in the form: "{dataset_name}_{table_name}"
+            Table name formatted in the form: "{aligned_volume}_{table_name}"
 
         Returns
         -------
@@ -170,7 +168,7 @@ class AnnotationDB:
             List of table_ids
         """
         metadata = self.cached_session.query(AnnoMetadata).all()
-        return [build_table_id(m.dataset_name, m.table_name) for m in metadata]
+        return [build_table_id(m.aligned_volume, m.table_name) for m in metadata]
 
     def cached_table(self, table_id: str) -> DeclarativeMeta:
         """ Returns cached table 'DeclarativeMeta' callable for querying.
@@ -178,7 +176,7 @@ class AnnotationDB:
         Parameters
         ----------
         table_name : str
-            Table name formatted in the form: "{dataset_name}_{table_name}"
+            Table name formatted in the form: "{aligned_volume}_{table_name}"
         Returns
         -------
         DeclarativeMeta
@@ -198,15 +196,13 @@ class AnnotationDB:
         Model = self.cached_table(table_id)
         return self.cached_session.query(Model).count()
 
-    def get_annotations(self, table_id: str, schema_name: str, anno_ids: List[int]) -> dict:
+    def get_annotations(self, aligned_volume: str, table_name: str, schema_type: str, annotation_ids: List[int]) -> dict:
         """ Get list of annotations from database by id.
 
         Parameters
         ----------
-        table_id : str
-            Table name formatted in the form: "{dataset_name}_{table_name}"
-        schema_name : str
-            Type of schema to use, must be a valid type from EMAnnotationSchemas
+        aligned_volume : str
+            Table name formatted in the form: "{aligned_volume}_{table_name}"
         anno_id : int
             annotation id 
 
@@ -215,15 +211,17 @@ class AnnotationDB:
         list
             list of annotation data dicts
         """
+        table_id = f"{aligned_volume}_{table_name}"
+
         AnnotationModel = self.cached_table(table_id)
         SegmentationModel = self.cached_table(f"{table_id}_segmentation")
         
         annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
                                           join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
-                                          filter(AnnotationModel.id.in_([x for x in anno_ids])).all()
+                                          filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
 
         try:
-            FlatSchema = get_flat_schema(schema_name)
+            FlatSchema = get_flat_schema(schema_type)
             schema = FlatSchema(unknown=INCLUDE)
             data = []
             
@@ -240,18 +238,19 @@ class AnnotationDB:
             return schema.load(data, many=True)
             
         except Exception as e:
-            logging.warning(f"No entries found for {anno_ids}")
+            logging.warning(f"No entries found for {annotation_ids}")
             return
 
-    def insert_annotations(self, table_id: str, schema_name: str, annotations: List[dict]):
+    def insert_annotations(self, aligned_volume: str, table_name:str, schema_type: str, annotations: List[dict]):
         """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
         using a bulk insert script.
 
         Parameters
         ----------
-        table_id : str
-            Table name formatted in the form: "{dataset_name}_{table_name}"
-        schema_name : str
+        aligned_volume : str
+            Table name formatted in the form: "{aligned_volume}_{table_name}"
+        table_name: str
+        schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         annotations : dict
             Dictionary of single annotation data. Must be flat dict unless structure_data flag is 
@@ -259,7 +258,8 @@ class AnnotationDB:
         """
         if len(annotations) > 10_000:
             return f"WARNING: Inserting {len(annotations)} annotations is too large."
-        
+
+        table_id = f"{aligned_volume}_{table_name}"
         formatted_anno_data = []
         formatted_seg_data = []
         
@@ -268,7 +268,7 @@ class AnnotationDB:
         
         for annotation in annotations:
             
-            annotation_data, segmentation_data = self._get_flattened_schema_data(schema_name, annotation)
+            annotation_data, segmentation_data = self._get_flattened_schema_data(schema_type, annotation)
             if annotation.get('id'):
                 annotation_data['id'] = annotation['id']
                 
@@ -292,24 +292,26 @@ class AnnotationDB:
         finally:
             self.commit_session()
 
-    def update_annotation(self, table_id: str, schema_name: str, anno_id: int, new_annotations: dict):
+    def update_annotation(self, aligned_volume: str, table_name: str, schema_type: str, anno_id: int, new_annotations: dict):
         """Updates an annotation by inserting a new row. The original annotation will refer to the new row
         with a superceded_id. Does not update inplace.
 
         Parameters
         ----------
-        table_id : str
-            Table name formatted in the form: "{dataset_name}_{table_name}"
-        schema_name : str
+        aligned_volume : str
+            Table name formatted in the form: "{aligned_volume}_{table_name}"
+        schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         anno_id : int
             Primary key ID to select annotation for updating.
         new_annotations : [type], optional
         """
+        table_id = f"{aligned_volume}_{table_name}"
+
         AnnotationModel = self.cached_table(table_id)
         SegmentationModel = self.cached_table(f"{table_id}_segmentation")
         
-        new_annotation, segmentation = self._get_flattened_schema_data(schema_name, new_annotations)
+        new_annotation, segmentation = self._get_flattened_schema_data(schema_type, new_annotations)
         
         new_annotation['created'] = datetime.datetime.now()
         new_annotation['valid'] = True
@@ -328,17 +330,18 @@ class AnnotationDB:
         
         self.commit_session()
 
-    def delete_annotation(self, table_id: str, anno_id: int):
+    def delete_annotation(self, aligned_volume: str, table_name: str, anno_id: int):
         """Flags an annotation for deletion via deletion timestamp. Will not remove data from
         the database.
 
         Parameters
         ----------
-        table_id : str
+        aligned_volume : str
             Table name formatted in the form: "{dataset_name}_{table_name}"
         anno_id : int
             Primary key ID to select annotation for deletion.
         """
+        table_id = f"{aligned_volume}_{table_name}"
         Model = self.cached_table(table_id)
 
         old_annotation = self.cached_session.query(Model).filter(Model.id==anno_id).one()
@@ -362,8 +365,8 @@ class AnnotationDB:
         self.mapped_base.prepare(self.engine, reflect=True)
         return self.mapped_base.classes[table_name]
 
-    def _get_flattened_schema_data(self, schema_name: str, data: dict) -> dict:
-        schema_type = get_schema(schema_name)
+    def _get_flattened_schema_data(self, schema_type: str, data: dict) -> dict:
+        schema_type = get_schema(schema_type)
         schema = schema_type(context={'postgis': True})
         data = schema.load(data, unknown=EXCLUDE)
        
