@@ -7,7 +7,7 @@ import json
 class AnnotationDBMeta:
     def __init__(self, aligned_volume: str, sql_base_uri: str):
 
-        sql_base_uri = sql_base_uri.rstrip('/')
+        sql_base_uri = sql_base_uri.rpartition("/")[0]
         sql_uri = f"{sql_base_uri}/{aligned_volume}"
 
         self._client = AnnotationDB(sql_uri)
@@ -45,7 +45,8 @@ class AnnotationDBMeta:
         return self._client.get_table_metadata(aligned_volume, table_name)
 
     def get_table_schema(self, table_name: str):
-        table_metadata = self.get_table_metadata(self.aligned_volume, table_name)
+        table_metadata = self.get_table_metadata(
+            self.aligned_volume, table_name)
         return table_metadata['schema']
 
     def get_existing_tables_metadata(self, aligned_volume: str, table_name: str) -> list:
@@ -80,8 +81,7 @@ class AnnotationDBMeta:
                                                 schema_type,
                                                 annotations)
         except TableNameNotFoundException as e:
-            return (f"Error: {e}")
-
+            return {f"Error: {e}"}
 
     def get_annotation_data(self, table_name: str, 
                                   annotation_ids: List[int]):
@@ -89,11 +89,11 @@ class AnnotationDBMeta:
         try:
             if schema_type:
                 self._client.get_annotations(self.aligned_volume,
-                                                table_name,
-                                                schema_type,
-                                                annotation_ids)
+                                             table_name,
+                                             schema_type,
+                                             annotation_ids)
         except TableNameNotFoundException as e:
-            return (f"Error: {e}")
+            return {f"Error: {e}"}
 
     def update_annotation_data(self, table_name: str,
                                      anno_id: int,
@@ -102,14 +102,14 @@ class AnnotationDBMeta:
         try:
             if schema_type:
                 self._client.update_annotation(self.aligned_volume,
-                                            schema_type,
-                                            table_name,
-                                            annotations)
+                                               schema_type,
+                                               table_name,
+                                               annotations)
         except TableNameNotFoundException as e:
-            return (f"Error: {e}")
+            return {f"Error: {e}"}
 
-    def delete_annotation(self, table_name: str, 
-                                annotation_ids: int):
+    def delete_annotation(self, table_name: str,
+                          annotation_ids: int):
         self._client.delete_annotation(self.aligned_volume,
                                        table_name,
                                        annotation_ids)
