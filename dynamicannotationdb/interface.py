@@ -1,11 +1,13 @@
 from sqlalchemy import create_engine, inspect, func
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import ArgumentError, InvalidRequestError
+from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError, IntegrityError
 from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from sqlalchemy.pool import NullPool
 from marshmallow import INCLUDE, EXCLUDE
 from emannotationschemas import get_schema, get_flat_schema
-from emannotationschemas.base import flatten_dict
+from emannotationschemas.flatten import flatten_dict
 from emannotationschemas import models as em_models
 from dynamicannotationdb.key_utils import build_table_id
 from dynamicannotationdb.models import Metadata as AnnoMetadata
@@ -27,14 +29,27 @@ class AnnotationDB:
         create_metadata : bool, optional
             Creates additional columns on new tables for CRUD operations, by default True
         """
+        
+        self.sql_uri = make_url(sql_uri)
+        base_uri = sql_uri.rpartition("/")[0]
 
-        try:
-            self.engine = create_engine(sql_uri,
-                                        pool_recycle=3600,
-                                        pool_size=20,
-                                        max_overflow=50)
-        except ArgumentError as error:
-            logging.error(f"Invalid SQLALCHEMY Argument: {error}")
+        temp_engine = create_engine(base_uri, poolclass=NullPool)
+
+        with temp_engine.connect() as connection:
+            connection.execute("commit")
+            result = connection.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{self.sql_uri.database}'")
+            if not result.fetchone():
+                print(f"Creating new database {self.sql_uri.database}")
+                connection.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+                           WHERE pid <> pg_backend_pid() AND datname = '{self.sql_uri.database}';")
+                connection.execute(f"create database {self.sql_uri.database} template postgres")
+
+        temp_engine.dispose()
+        
+        self.engine = create_engine(self.sql_uri,
+                                    pool_recycle=3600,
+                                    pool_size=20,
+                                    max_overflow=50)
 
         self.base = em_models.Base
         self.mapped_base = None
@@ -90,13 +105,12 @@ class AnnotationDB:
         
         if table_id in self.get_existing_tables():
             logging.warning(f"Table creation failed: {table_id} already exists")
-            
-        model = em_models.make_annotation_model(aligned_volume,
-                                                table_name,
+            return {f"Table {table_id} exists "}
+        model = em_models.make_annotation_model(table_id,
                                                 schema_type,
                                                 metadata_dict,
                                                 with_crud_columns=True)
-
+     
         self.base.metadata.create_all(bind=self.engine)
 
         creation_time = datetime.datetime.now()
@@ -109,15 +123,13 @@ class AnnotationDB:
         })
         logging.info(f"Metadata for table: {table_id} is {metadata_dict}")
         anno_metadata = AnnoMetadata(**metadata_dict)
-        
         self.cached_session.add(anno_metadata)
         self.commit_session()     
+        logging.info(f"Table: {table_id} created using {model} model at {creation_time}")
+        return {"Created Succesfully": True, "Table Name": table_id, "Description": metadata_dict['description']}
         
-        logging.info(f"Table: {table_name} created using {model} model at {creation_time}")
-        return {"Created Succesfully": True, "Table Name": table_name, "Description": metadata_dict['description']}
-        
-    def get_table(self, table_name):
-        return self.cached_table(table_name)
+    def get_table(self, table_id):
+        return self.cached_table(table_id)
 
     def get_table_metadata(self, aligned_volume: str, table_name: str):
         metadata = self.cached_session.query(AnnoMetadata).\
@@ -196,7 +208,10 @@ class AnnotationDB:
         Model = self.cached_table(table_id)
         return self.cached_session.query(Model).count()
 
-    def get_annotations(self, aligned_volume: str, table_name: str, schema_type: str, annotation_ids: List[int]) -> dict:
+    def get_annotations(self, aligned_volume: str,
+                              table_name: str,
+                              schema_type: str,
+                              annotation_ids: List[int]) -> dict:
         """ Get list of annotations from database by id.
 
         Parameters
@@ -211,10 +226,102 @@ class AnnotationDB:
         list
             list of annotation data dicts
         """
-        table_id = f"{aligned_volume}_{table_name}"
+        table_id = build_table_id(aligned_volume, table_name)
 
         AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_segmentation")
+        
+        annotations = self.cached_session.query(AnnotationModel).\
+                            filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
+
+        try:
+            FlatSchema = get_flat_schema(schema_type)
+            schema = FlatSchema(unknown=INCLUDE)
+            data = []
+            
+            for anno in annotations: 
+                anno_data = anno.__dict__
+                anno_data['created'] = str(anno_data.get('created'))
+                anno_data['deleted'] = str(anno_data.get('deleted'))
+                anno_data.pop('_sa_instance_state', None)
+                merged_data = {**anno_data}
+                data.append(merged_data)
+
+            return schema.load(data, many=True)
+            
+        except Exception as e:
+            logging.warning(f"No entries found for {annotation_ids}")
+            return
+        
+    def insert_annotations(self, aligned_volume: str,
+                                 table_name:str,
+                                 schema_type: str,
+                                 annotations: List[dict]):
+        """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
+        using a bulk insert script.
+
+        Parameters
+        ----------
+        aligned_volume : str
+            Table name formatted in the form: "{aligned_volume}_{table_name}"
+        table_name: str
+        schema_type : str
+            Type of schema to use, must be a valid type from EMAnnotationSchemas
+        annotations : dict
+            Dictionary of single annotation data. Must be flat dict unless structure_data flag is 
+            set to True.
+        """
+        if len(annotations) > 10_000:
+            return f"WARNING: Inserting {len(annotations)} annotations is too large."
+
+
+        table_id = build_table_id(aligned_volume, table_name)
+        formatted_anno_data = []
+        
+        AnnotationModel = self.cached_table(table_id)
+        
+        for annotation in annotations:
+            
+            annotation_data, __ = self._get_flattened_schema_data(schema_type, annotation)
+            if annotation.get('id'):
+                annotation_data['id'] = annotation['id']
+                
+            annotation_data['created'] = datetime.datetime.now()
+            formatted_anno_data.append(annotation_data)
+            
+        annos = [AnnotationModel(**annotation_data) for annotation_data in formatted_anno_data]
+
+        try:
+            self.cached_session.add_all(annos)
+                            
+        except InvalidRequestError as e:
+            self.cached_session.rollback()
+        finally:
+            self.commit_session()
+    
+    def get_linked_annotations(self, aligned_volume: str,
+                                     table_name: str,
+                                     pcg_table_name: str,
+                                     pcg_version: int,
+                                     schema_type: str,
+                                     annotation_ids: List[int]) -> dict:
+        """ Get list of annotations from database by id.
+
+        Parameters
+        ----------
+        aligned_volume : str
+            Table name formatted in the form: "{aligned_volume}_{table_name}"
+        anno_id : int
+            annotation id 
+
+        Returns
+        -------
+        list
+            list of annotation data dicts
+        """
+        table_id = build_table_id(aligned_volume, table_name)
+
+        AnnotationModel = self.cached_table(table_id)
+        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
         
         annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
                                           join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
@@ -241,7 +348,12 @@ class AnnotationDB:
             logging.warning(f"No entries found for {annotation_ids}")
             return
 
-    def insert_annotations(self, aligned_volume: str, table_name:str, schema_type: str, annotations: List[dict]):
+    def insert_linked_annotations(self, aligned_volume: str,
+                                        table_name:str,
+                                        pcg_table_name: str,
+                                        pcg_version: int,
+                                        schema_type: str,
+                                        annotations: List[dict]):
         """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
         using a bulk insert script.
 
@@ -259,12 +371,12 @@ class AnnotationDB:
         if len(annotations) > 10_000:
             return f"WARNING: Inserting {len(annotations)} annotations is too large."
 
-        table_id = f"{aligned_volume}_{table_name}"
+        table_id = build_table_id(aligned_volume, table_name)
         formatted_anno_data = []
         formatted_seg_data = []
         
         AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_segmentation")
+        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
         
         for annotation in annotations:
             
@@ -292,7 +404,13 @@ class AnnotationDB:
         finally:
             self.commit_session()
 
-    def update_annotation(self, aligned_volume: str, table_name: str, schema_type: str, anno_id: int, new_annotations: dict):
+    def update_linked_annotation(self, aligned_volume: str,
+                                       table_name: str,
+                                       pcg_table_name: str,
+                                       pcg_version: int,
+                                       schema_type: str,
+                                       anno_id: int,
+                                       new_annotations: dict):
         """Updates an annotation by inserting a new row. The original annotation will refer to the new row
         with a superceded_id. Does not update inplace.
 
@@ -306,10 +424,10 @@ class AnnotationDB:
             Primary key ID to select annotation for updating.
         new_annotations : [type], optional
         """
-        table_id = f"{aligned_volume}_{table_name}"
+        table_id = build_table_id(aligned_volume, table_name)
 
         AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_segmentation")
+        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
         
         new_annotation, segmentation = self._get_flattened_schema_data(schema_type, new_annotations)
         
@@ -341,7 +459,7 @@ class AnnotationDB:
         anno_id : int
             Primary key ID to select annotation for deletion.
         """
-        table_id = f"{aligned_volume}_{table_name}"
+        table_id = build_table_id(aligned_volume, table_name)
         Model = self.cached_table(table_id)
 
         old_annotation = self.cached_session.query(Model).filter(Model.id==anno_id).one()
