@@ -180,7 +180,7 @@ class AnnotationDB:
             List of table_ids
         """
         metadata = self.cached_session.query(AnnoMetadata).all()
-        return [build_table_id(m.aligned_volume, m.table_name) for m in metadata]
+        return [m.table_name for m in metadata]
 
     def cached_table(self, table_id: str) -> DeclarativeMeta:
         """ Returns cached table 'DeclarativeMeta' callable for querying.
