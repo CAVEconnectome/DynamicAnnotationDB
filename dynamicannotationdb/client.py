@@ -11,14 +11,14 @@ class AnnotationDBMeta:
         sql_uri = f"{sql_base_uri}/{aligned_volume}"
 
         self._client = AnnotationDB(sql_uri)
-        self.aligned_volume = aligned_volume
+        self._aligned_volume = aligned_volume
 
         self._table = None
         self._cached_schemas = {}
 
     @property
     def aligned_volume(self):
-        return self.aligned_volume
+        return self._aligned_volume
 
     @property
     def session(self):
