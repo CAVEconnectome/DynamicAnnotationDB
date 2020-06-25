@@ -58,15 +58,15 @@ def deserialize_key(key: bytes) -> str:
     return key.decode()
 
 
-def build_table_id(dataset_name, table_name):
-    """ Combines dataset name and annotation to create specific table id
+def build_table_id(aligned_volume, table_name):
+    """ Combines aligned_volume name and specified table name to create specific table id
 
-    :param dataset_name: str
+    :param aligned_volume: str
     :param table_name: str
     :return: str
     """
 
-    return "annov1__%s__%s" % (dataset_name, table_name)
+    return "annov1__%s__%s" % (aligned_volume, table_name)
 
 
 def get_table_name_from_table_id(table_id):
