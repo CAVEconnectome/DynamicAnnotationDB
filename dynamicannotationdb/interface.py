@@ -16,7 +16,7 @@ import logging
 import datetime
 import time
 
-class AnnotationDB:
+class DynamicAnnotationInterface:
 
     def __init__(self, sql_uri: str, 
                        create_metadata: bool = True):
@@ -128,13 +128,11 @@ class AnnotationDB:
         logging.info(f"Table: {table_id} created using {model} model at {creation_time}")
         return {"Created Succesfully": True, "Table Name": table_id, "Description": metadata_dict['description']}
         
-    def get_table(self, table_id):
-        return self.cached_table(table_id)
-
     def get_table_metadata(self, aligned_volume: str, table_name: str):
+        table_id = build_table_id(aligned_volume, table_name) 
+
         metadata = self.cached_session.query(AnnoMetadata).\
-                        filter(AnnoMetadata.table_name==table_name).\
-                        filter(AnnoMetadata.aligned_volume == aligned_volume).first()
+                        filter(AnnoMetadata.table_name==table_id).first()
         metadata.__dict__.pop('_sa_instance_state')
         return metadata.__dict__
 
@@ -204,7 +202,8 @@ class AnnotationDB:
         Model = self.cached_table(table_id)
         return self.cached_session.query(func.count(Model.id)).scalar()
 
-    def get_annotation_table_size(self, table_id: str) -> int:
+    def get_annotation_table_size(self, aligned_volume: str, table_name: str) -> int:
+        table_id = build_table_id(aligned_volume, table_name)
         Model = self.cached_table(table_id)
         return self.cached_session.query(Model).count()
 
@@ -286,6 +285,7 @@ class AnnotationDB:
                 annotation_data['id'] = annotation['id']
                 
             annotation_data['created'] = datetime.datetime.now()
+            annotation_data['valid'] = True
             formatted_anno_data.append(annotation_data)
             
         annos = [AnnotationModel(**annotation_data) for annotation_data in formatted_anno_data]
@@ -297,122 +297,13 @@ class AnnotationDB:
             self.cached_session.rollback()
         finally:
             self.commit_session()
-    
-    def get_linked_annotations(self, aligned_volume: str,
-                                     table_name: str,
-                                     pcg_table_name: str,
-                                     pcg_version: int,
-                                     schema_type: str,
-                                     annotation_ids: List[int]) -> dict:
-        """ Get list of annotations from database by id.
 
-        Parameters
-        ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        anno_id : int
-            annotation id 
-
-        Returns
-        -------
-        list
-            list of annotation data dicts
-        """
-        table_id = build_table_id(aligned_volume, table_name)
-
-        AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
-        
-        annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
-                                          join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
-                                          filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
-
-        try:
-            FlatSchema = get_flat_schema(schema_type)
-            schema = FlatSchema(unknown=INCLUDE)
-            data = []
-            
-            for anno, seg in annotations: 
-                anno_data = anno.__dict__
-                seg_data = seg.__dict__
-                anno_data['created'] = str(anno_data.get('created'))
-                anno_data['deleted'] = str(anno_data.get('deleted'))
-                anno_data.pop('_sa_instance_state', None)
-                seg_data.pop('_sa_instance_state', None)
-                merged_data = {**anno_data, **seg_data}
-                data.append(merged_data)
-
-            return schema.load(data, many=True)
-            
-        except Exception as e:
-            logging.warning(f"No entries found for {annotation_ids}")
-            return
-
-    def insert_linked_annotations(self, aligned_volume: str,
-                                        table_name:str,
-                                        pcg_table_name: str,
-                                        pcg_version: int,
-                                        schema_type: str,
-                                        annotations: List[dict]):
-        """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
-        using a bulk insert script.
-
-        Parameters
-        ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        table_name: str
-        schema_type : str
-            Type of schema to use, must be a valid type from EMAnnotationSchemas
-        annotations : dict
-            Dictionary of single annotation data. Must be flat dict unless structure_data flag is 
-            set to True.
-        """
-        if len(annotations) > 10_000:
-            return f"WARNING: Inserting {len(annotations)} annotations is too large."
-
-        table_id = build_table_id(aligned_volume, table_name)
-        formatted_anno_data = []
-        formatted_seg_data = []
-        
-        AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
-        
-        for annotation in annotations:
-            
-            annotation_data, segmentation_data = self._get_flattened_schema_data(schema_type, annotation)
-            if annotation.get('id'):
-                annotation_data['id'] = annotation['id']
-                
-            annotation_data['created'] = datetime.datetime.now()
-            
-            formatted_anno_data.append(annotation_data)
-            formatted_seg_data.append(segmentation_data)
-            
-        annos = [AnnotationModel(**annotation_data) for annotation_data in formatted_anno_data]
-
-        try:
-            self.cached_session.add_all(annos)
-            
-            self.cached_session.flush()
-
-            segs = [SegmentationModel(**segmentation_data, annotation_id=anno.id) for segmentation_data, anno in zip(formatted_seg_data, annos)]
-                    
-            self.cached_session.add_all(segs)
-        except InvalidRequestError as e:
-            self.cached_session.rollback()
-        finally:
-            self.commit_session()
-
-    def update_linked_annotation(self, aligned_volume: str,
-                                       table_name: str,
-                                       pcg_table_name: str,
-                                       pcg_version: int,
-                                       schema_type: str,
-                                       anno_id: int,
-                                       new_annotations: dict):
-        """Updates an annotation by inserting a new row. The original annotation will refer to the new row
-        with a superceded_id. Does not update inplace.
+    def update_annotations(self, aligned_volume: str,
+                                 table_name: str,
+                                 schema_type: str,
+                                 anno_id: int,
+                                 new_annotations: dict):
+        """Updates an annotation by inserting a new row. 
 
         Parameters
         ----------
@@ -427,28 +318,25 @@ class AnnotationDB:
         table_id = build_table_id(aligned_volume, table_name)
 
         AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
         
-        new_annotation, segmentation = self._get_flattened_schema_data(schema_type, new_annotations)
+        new_annotation, __ = self._get_flattened_schema_data(schema_type, new_annotations)
         
         new_annotation['created'] = datetime.datetime.now()
         new_annotation['valid'] = True
 
         new_data = AnnotationModel(**new_annotation)
       
-        old_anno, old_seg = self.cached_session.query(AnnotationModel, SegmentationModel).filter(AnnotationModel.id==anno_id).one()
+        old_anno = self.cached_session.query(AnnotationModel).filter(AnnotationModel.id==anno_id).one()
         
         self.cached_session.add(new_data)
         self.cached_session.flush()
         
         old_anno.superceded_id = new_data.id
         old_anno.valid = False
-        
-        old_seg.annotation_id = new_data.id
-        
+                
         self.commit_session()
 
-    def delete_annotation(self, aligned_volume: str, table_name: str, anno_id: int):
+    def delete_annotations(self, aligned_volume: str, table_name: str, anno_ids: List[int]):
         """Flags an annotation for deletion via deletion timestamp. Will not remove data from
         the database.
 
@@ -462,8 +350,10 @@ class AnnotationDB:
         table_id = build_table_id(aligned_volume, table_name)
         Model = self.cached_table(table_id)
 
-        old_annotation = self.cached_session.query(Model).filter(Model.id==anno_id).one()
-        old_annotation.deleted = datetime.datetime.now()
+        annotations = self.cached_session.query(Model).filter(Model.id.in_(anno_ids)).all()
+        deleted_time = datetime.datetime.now()
+        for annotation in annotations:
+            old_annotation.deleted = deleted_time
 
         self.commit_session()
 
@@ -485,6 +375,7 @@ class AnnotationDB:
 
     def _get_flattened_schema_data(self, schema_type: str, data: dict) -> dict:
         schema_type = get_schema(schema_type)
+        logging.info(f"DATA: {data}                ")
         schema = schema_type(context={'postgis': True})
         data = schema.load(data, unknown=EXCLUDE)
        
