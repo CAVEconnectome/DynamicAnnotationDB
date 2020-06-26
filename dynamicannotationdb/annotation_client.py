@@ -1,5 +1,6 @@
 from dynamicannotationdb.interface import DynamicAnnotationInterface
 from dynamicannotationdb.errors import TableNameNotFoundException
+from dynamicannotationdb.key_utils import get_table_name_from_table_id
 from typing import List
 import json
 
@@ -32,7 +33,9 @@ class DynamicAnnotationClient:
         return table_name in self._client.get_existing_tables()
 
     def get_existing_tables(self):
-        return self._client.get_existing_tables()
+        table_ids = self._client.get_existing_tables()
+        table_names = [get_table_name_from_table_id(tid) for tid in table_ids]
+        return table_names
 
     def get_aligned_volume_tables(self, aligned_volume: str):
         return self._client.get_dataset_tables(aligned_volume=aligned_volume)
