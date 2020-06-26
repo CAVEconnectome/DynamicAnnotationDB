@@ -293,11 +293,11 @@ class DynamicAnnotationInterface:
         finally:
             self.commit_session()
 
-    def update_annotations(self, aligned_volume: str,
+    def update_annotation(self, aligned_volume: str,
                                  table_name: str,
                                  schema_type: str,
                                  anno_id: int,
-                                 new_annotations: dict):
+                                 new_annotation: dict):
         """Updates an annotation by inserting a new row. 
 
         Parameters
@@ -308,7 +308,8 @@ class DynamicAnnotationInterface:
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         anno_id : int
             Primary key ID to select annotation for updating.
-        new_annotations : [type], optional
+        new_annotation : dict
+            new annotation data
         """
         table_id = build_table_id(aligned_volume, table_name)
 

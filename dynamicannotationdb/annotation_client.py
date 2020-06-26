@@ -228,7 +228,7 @@ class DynamicAnnotationClient:
             TODO: What does this raise
         """
         try:
-            self._client.update_annotations(self.aligned_volume,
+            self._client.update_annotation(self.aligned_volume,
                                             table_name,
                                             schema_type,
                                             anno_id,
