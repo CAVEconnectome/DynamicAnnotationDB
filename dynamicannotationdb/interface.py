@@ -139,11 +139,6 @@ class DynamicAnnotationInterface:
     def get_table_sql_metadata(self, table_name):
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
-
-    def get_aligned_volume_tables(self, aligned_volume: str):
-        metadata = self.cached_session.query(AnnoMetadata).\
-                        filter(AnnoMetadata.aligned_volume==aligned_volume).all()
-        return [m.table_name for m in metadata]
          
 
     def get_model_columns(self, table_id: str) -> list:
