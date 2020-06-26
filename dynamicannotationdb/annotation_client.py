@@ -37,26 +37,22 @@ class DynamicAnnotationClient:
         table_names = [get_table_name_from_table_id(tid) for tid in table_ids]
         return table_names
 
-    def get_aligned_volume_tables(self, aligned_volume: str):
-        return self._client.get_dataset_tables(aligned_volume=aligned_volume)
-
-    def get_table_metadata(self,aligned_volume: str, table_name: str) -> dict:
-        return self._client.get_table_metadata(aligned_volume, table_name)
+    def get_table_metadata(self, table_name: str) -> dict:
+        return self._client.get_table_metadata(self.aligned_volume, table_name)
 
     def get_table_schema(self, table_name: str):
-        table_metadata = self.get_table_metadata(
-            self.aligned_volume, table_name)
+        table_metadata = self.get_table_metadata( table_name)
         return table_metadata['schema_type']
 
-    def get_existing_tables_metadata(self, aligned_volume: str, table_name: str) -> list:
+    def get_existing_tables_metadata(self, table_name: str) -> list:
 
         return [
-            self.get_table_metadata(aligned_volume, table_name=table_name)
-            for table_id in self._client.get_dataset_tables(table_name)
+            self.get_table_metadata(table_name=table_name)
+            for table_id in self._client.get_existing_tables()
         ]
 
-    def get_annotation_table_length(self, aligned_volume: str, table_name: str) -> int:
-        return self._client.get_annotation_table_size(aligned_volume, table_name)
+    def get_annotation_table_length(self,  table_name: str) -> int:
+        return self._client.get_annotation_table_size(self.aligned_volume, table_name)
 
     def create_table(self, table_name: str,
                            schema_type: str,
