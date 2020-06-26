@@ -232,7 +232,7 @@ class DynamicAnnotationClient:
                                             table_name,
                                             schema_type,
                                             anno_id,
-                                            annotations)
+                                            annotation)
         except TableNameNotFoundException as e:
             return {f"Error: {e}"}
 
