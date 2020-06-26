@@ -65,7 +65,7 @@ class DynamicAnnotationClient:
             table_name (str): name of the table
 
         Returns:
-            dict: the meta data (from sql) for this table
+            dict: the meta data for this table
         """
         return self._client.get_table_metadata(self.aligned_volume, table_name)
 
@@ -85,7 +85,7 @@ class DynamicAnnotationClient:
         """get all the metadata for all tables
 
         Returns:
-            list(dict): all table metadata (from sql) that exist
+            list(dict): all table metadata that exist
         """
         return [
             self.get_table_metadata(table_name=table_name)
