@@ -352,7 +352,30 @@ class DynamicAnnotationInterface:
             annotation.deleted = deleted_time
 
         self.commit_session()
+    def delete_table(self, table_name: str):
+        """marks a table for deletion, which will
+           remove it from user visible calls
+           and stop materialization from happening on this table
+           only updates metadata to reflect deleted timestamp.
 
+        Args:
+            table_name (str): name of table to mark for deletion
+
+        Returns:
+            bool: whether table was successfully deleted
+        """
+        metadata = self.cached_session.query(AnnoMetadata).\
+                filter(AnnoMetadata.table_name==table_id).first()
+        metadata.deleted = datetime.datetime.now()
+        try:
+            self.cached_session.update(metadata)
+            self.commit_session() 
+            return True
+         except InvalidRequestError as e:
+            self.cached_session.rollback()
+            return False
+
+            
     def drop_table(self, table_name: str):
         anno_table = self.base.metadata.tables.get(table_name)
         seg_table = self.base.metadata.tables.get(f"{table_name}_segmentation")

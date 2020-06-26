@@ -131,9 +131,24 @@ class DynamicAnnotationClient:
                                          table_name,
                                          schema_type,
                                          metadata_dict)
+    def delete_table(self, table_name: str) -> bool:
+        """marks a table for deletion, which will
+           remove it from user visible calls
+           and stop materialization from happening on this table
+           only updates metadata to reflect deleted timestamp.
 
+        Args:
+            table_name (str): name of table to mark for deletion
+
+        Returns:
+            bool: whether table was successfully deleted
+        """                    
+        return self._client.delete_table(self.aligned_volume, 
+                                  table_name)
+                                  
     def drop_table(self, table_name: str) -> bool:
-        """drop a table
+        """drop a table, actually removes it from the database
+        along with segmentation tables associated with it
 
         Args:
             table_name (str): name of table to drop
