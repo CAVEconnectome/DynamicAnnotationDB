@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, inspect, func
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError, IntegrityError
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.engine.url import make_url
@@ -67,19 +67,19 @@ class DynamicAnnotationInterface:
         self._cached_tables = {}
         
     @property
-    def cached_session(self):
+    def cached_session(self)->Session:
         if self._cached_session is None:
             self._cached_session = self.session()
         return self._cached_session
 
     def commit_session(self):
         try:
-            self._cached_session.commit()
+            self.cached_session.commit()
         except:
-            self._cached_session.rollback()
+            self.cached_session.rollback()
             raise
         finally:
-            self._cached_session.close()
+            self.cached_session.close()
         self._cached_session = None
 
     def create_table(self, 
@@ -352,18 +352,20 @@ class DynamicAnnotationInterface:
             annotation.deleted = deleted_time
 
         self.commit_session()
-    def delete_table(self, table_name: str):
+    def delete_table(self, aligned_volume: str, table_name: str):
         """marks a table for deletion, which will
            remove it from user visible calls
            and stop materialization from happening on this table
            only updates metadata to reflect deleted timestamp.
 
         Args:
+            aligned_volume (str): name of aligned volume
             table_name (str): name of table to mark for deletion
 
         Returns:
             bool: whether table was successfully deleted
         """
+        table_id = build_table_id(aligned_volume, table_name)
         metadata = self.cached_session.query(AnnoMetadata).\
                 filter(AnnoMetadata.table_name==table_id).first()
         metadata.deleted = datetime.datetime.now()
@@ -371,7 +373,7 @@ class DynamicAnnotationInterface:
             self.cached_session.update(metadata)
             self.commit_session() 
             return True
-         except InvalidRequestError as e:
+        except InvalidRequestError as e:
             self.cached_session.rollback()
             return False
 

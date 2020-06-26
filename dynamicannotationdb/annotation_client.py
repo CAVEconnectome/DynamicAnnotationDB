@@ -144,8 +144,8 @@ class DynamicAnnotationClient:
             bool: whether table was successfully deleted
         """                    
         return self._client.delete_table(self.aligned_volume, 
-                                  table_name)
-                                  
+                                         table_name)
+
     def drop_table(self, table_name: str) -> bool:
         """drop a table, actually removes it from the database
         along with segmentation tables associated with it
