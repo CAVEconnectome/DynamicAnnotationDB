@@ -370,7 +370,6 @@ class DynamicAnnotationInterface:
                 filter(AnnoMetadata.table_name==table_id).first()
         metadata.deleted = datetime.datetime.now()
         try:
-            self.cached_session.update(metadata)
             self.commit_session() 
             return True
         except InvalidRequestError as e:
