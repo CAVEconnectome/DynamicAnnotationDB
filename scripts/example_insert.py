@@ -1,26 +1,26 @@
-from dynamicannotationdb.interface import AnnotationDB
+from dynamicannotationdb.annotation_client import DynamicAnnotationClient
 from dynamicannotationdb.key_utils import build_table_id
 # Test URI
 SQL_URI = "postgres://postgres:annodb@localhost:5432/annodb" 
 
 # Create annotation db instance
-client = AnnotationDB(sql_uri=SQL_URI)
 
-dataset_name = 'minnie'
+
+aligned_volume = 'minnie'
 table_name = 'synapse_test'
 schema_name = 'synapse'
-table_id = build_table_id(dataset_name, table_name)
+client = DynamicAnnotationClient(aligned_volume=aligned_volume, sql_base_uri=SQL_URI)
 
 test_table_description = "This is an example description for this table"
 
-new_table = client.create_table(dataset_name, 
-                                table_name, 
+new_table = client.create_table(table_name, 
                                 schema_name,
-                                description=test_table_description,
-                                user_id='foo@bar.com')
+                                metadata_dict={
+                                    'description':test_table_description,
+                                    'user_id': 'foo@bar.com'})
 
-# get list of tables by em_dataset name
-tables = client.get_dataset_tables(dataset_name)
+# get list of tables in aligned volume
+tables = client.get_existing_tables()
 
 # Lets add a synapse
 
@@ -37,9 +37,9 @@ synapse_data = {
 insert new data, if assign_id is True, the Database PK will be overriden by the 'id' in
 synapse_data
 """
-client.insert_annotation(table_id, schema_name, synapse_data, assign_id=False)
+client.insert_annotations(table_name, schema_name, [synapse_data])
 # Get the newly inserted row
-client.get_annotation(table_id, schema_name, 1)
+anns=client.get_annotations(table_name, schema_name, [1])
 
 
 updated_synapse_data = {
@@ -51,4 +51,4 @@ updated_synapse_data = {
 }  
 
 # Update annotation
-client.update_annotation(table_id, schema_name, 1, updated_synapse_data)
+client.update_annotation(table_name, schema_name, 1, updated_synapse_data)
