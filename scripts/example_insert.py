@@ -1,5 +1,5 @@
 from dynamicannotationdb.interface import AnnotationDB
-
+from dynamicannotationdb.key_utils import build_table_id
 # Test URI
 SQL_URI = "postgres://postgres:annodb@localhost:5432/annodb" 
 
@@ -9,7 +9,7 @@ client = AnnotationDB(sql_uri=SQL_URI)
 dataset_name = 'minnie'
 table_name = 'synapse_test'
 schema_name = 'synapse'
-table_id = f"{dataset_name}_{table_name}"
+table_id = build_table_id(dataset_name, table_name)
 
 test_table_description = "This is an example description for this table"
 

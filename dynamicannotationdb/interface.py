@@ -353,7 +353,7 @@ class DynamicAnnotationInterface:
         annotations = self.cached_session.query(Model).filter(Model.id.in_(anno_ids)).all()
         deleted_time = datetime.datetime.now()
         for annotation in annotations:
-            old_annotation.deleted = deleted_time
+            annotation.deleted = deleted_time
 
         self.commit_session()
 
@@ -395,7 +395,7 @@ class DynamicAnnotationInterface:
         self.base.metadata.drop_all(self.engine)
 
     def _reset_table(self, dataset_name, table_name, n_retries=20, delay_s=5):
-        metadata = self.get_table_sql_metadata(dataset_name, table_name)
+        metadata = self.get_table_sql_metadata(table_name)
 
         if self.drop_table(table_name=table_name):
             for _ in range(n_retries):
