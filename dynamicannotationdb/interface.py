@@ -315,7 +315,7 @@ class DynamicAnnotationInterface:
 
         AnnotationModel = self.cached_table(table_id)
         
-        new_annotation, __ = self._get_flattened_schema_data(schema_type, new_annotations)
+        new_annotation, __ = self._get_flattened_schema_data(schema_type, new_annotation)
         
         new_annotation['created'] = datetime.datetime.now()
         new_annotation['valid'] = True
