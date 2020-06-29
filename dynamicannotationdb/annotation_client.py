@@ -15,7 +15,7 @@ import json
 
 class DynamicAnnotationClient(DynamicAnnotationInterface):
     def __init__(self, aligned_volume, sql_base_uri):
-        super().__init__(sql_base_uri)
+        super().__init__(aligned_volume, sql_base_uri)
 
         self.aligned_volume = aligned_volume
 

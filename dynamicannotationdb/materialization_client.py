@@ -15,7 +15,7 @@ import json
 
 class DynamicMaterializationClient(DynamicAnnotationInterface):
     def __init__(self, aligned_volume, sql_uri):
-        super().__init__(sql_uri)
+        super().__init__(aligned_volume, sql_uri)
     
         self.aligned_volume = aligned_volume
         self._table = None
