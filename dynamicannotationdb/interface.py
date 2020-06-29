@@ -5,21 +5,22 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.pool import NullPool
-from marshmallow import INCLUDE, EXCLUDE
+from marshmallow import EXCLUDE
 from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.flatten import flatten_dict
 from emannotationschemas import models as em_models
 from dynamicannotationdb.key_utils import build_table_id
 from dynamicannotationdb.models import Metadata as AnnoMetadata
+from dynamicannotationdb.errors import TableNameNotFound
 from typing import List
 import logging
 import datetime
 import time
 
+
 class DynamicAnnotationInterface:
 
-    def __init__(self, sql_uri: str, 
-                       create_metadata: bool = True):
+    def __init__(self, sql_uri: str):
         """ Annotation DB interface layer for creating and querying tables in SQL
 
         Parameters
@@ -29,7 +30,7 @@ class DynamicAnnotationInterface:
         create_metadata : bool, optional
             Creates additional columns on new tables for CRUD operations, by default True
         """
-        
+
         self.sql_uri = make_url(sql_uri)
         base_uri = sql_uri.rpartition("/")[0]
 
@@ -39,13 +40,13 @@ class DynamicAnnotationInterface:
             connection.execute("commit")
             result = connection.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{self.sql_uri.database}'")
             if not result.fetchone():
-                print(f"Creating new database {self.sql_uri.database}")
+                logging.info(f"Creating new database {self.sql_uri.database}")
                 connection.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
                            WHERE pid <> pg_backend_pid() AND datname = '{self.sql_uri.database}';")
-                connection.execute(f"create database {self.sql_uri.database} template postgres")
+                connection.execute(f"create database {self.sql_uri.database} template template_postgis")
 
         temp_engine.dispose()
-        
+
         self.engine = create_engine(self.sql_uri,
                                     pool_recycle=3600,
                                     pool_size=20,
@@ -54,18 +55,17 @@ class DynamicAnnotationInterface:
         self.base = em_models.Base
         self.mapped_base = None
 
-        if create_metadata:
-            self.base.metadata.create_all(self.engine)
-        
+        self.base.metadata.create_all(self.engine)
+
         self.base.metadata.reflect(bind=self.engine)
 
         self.session = sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
 
         self.insp = inspect(self.engine)
-        
+
         self._cached_session = None
         self._cached_tables = {}
-        
+
     @property
     def cached_session(self):
         if self._cached_session is None:
@@ -75,46 +75,53 @@ class DynamicAnnotationInterface:
     def commit_session(self):
         try:
             self._cached_session.commit()
-        except:
+        except Exception:
             self._cached_session.rollback()
-            raise
+            logging.exception(f"SQL Error")
         finally:
             self._cached_session.close()
         self._cached_session = None
 
-    def create_table(self, 
-                     aligned_volume: str,
-                     table_name: str, 
-                     schema_type:str, 
-                     metadata_dict: dict):
-        """Create new annotation table. Checks if already exists. 
-        If it is missing for the given em_dataset name it will be
-        created.
+    def create_annotation_table(self,
+                                aligned_volume: str,
+                                table_name: str,
+                                schema_type:str,
+                                metadata_dict: dict):
+        """Create new annotation table unless already exists. 
 
         Parameters
         ----------
         aligned_volume : str
-            Name of dataset to prefix to table, if no cell segment table exists with 
-            this name a new table will be generated.
+            name of aligned_volume to attach a new annotation table
         table_name : str
+            name of table
         schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
-        metadata_dict : dict, optional
+        metadata_dict : dict
+             metadata to attach ::
+             
+        dict: {
+            "description": "a string with a human readable explanation of \ 
+                        what is in the table. Including who made it"
+            "user_id": "user_id"
+            "reference_table": "reference table name, if required by this schema"
+            }
         """
-        table_id = build_table_id(aligned_volume, table_name) 
-        
+        table_id = build_table_id(aligned_volume, table_name)
+
         if table_id in self.get_existing_tables():
             logging.warning(f"Table creation failed: {table_id} already exists")
-            return {f"Table {table_id} exists "}
+            return f"Table {table_id} already exists"
+
         model = em_models.make_annotation_model(table_id,
                                                 schema_type,
                                                 metadata_dict,
                                                 with_crud_columns=True)
-     
+
         self.base.metadata.create_all(bind=self.engine)
 
         creation_time = datetime.datetime.now()
-        
+
         metadata_dict.update({
             'schema_type': schema_type,
             'table_name': table_id,
@@ -124,22 +131,70 @@ class DynamicAnnotationInterface:
         logging.info(f"Metadata for table: {table_id} is {metadata_dict}")
         anno_metadata = AnnoMetadata(**metadata_dict)
         self.cached_session.add(anno_metadata)
-        self.commit_session()     
+        self.commit_session()
         logging.info(f"Table: {table_id} created using {model} model at {creation_time}")
         return {"Created Succesfully": True, "Table Name": table_id, "Description": metadata_dict['description']}
-        
-    def get_table_metadata(self, aligned_volume: str, table_name: str):
-        table_id = build_table_id(aligned_volume, table_name) 
 
+    def create_segmentation_table(self, aligned_volume: str,
+                                        annotation_table_name: str,
+                                        schema_type:str,
+                                        pcg_table_name: str,
+                                        version: int):
+        """Create new segmentation table linked to an annotation table
+         unless it already exists. 
+
+        Parameters
+        ----------
+        aligned_volume : str
+            name of aligned_volume to attach a new segmentation table
+        annotation_table_name : str
+            name of table annotation to link the segmentation table 
+        schema_type : str
+            Type of schema to use, must be a valid type from EMAnnotationSchemas
+        pcg_table_name : str
+            name of pychunked graph segmentation to use
+        version : int
+            version of table
+
+        Returns
+        -------
+        dict
+            description of table that is created
+        """
+        table_id = build_table_id(aligned_volume, annotation_table_name)
+
+        segmentation_table_name = f"{table_id}_{pcg_table_name}_v{version}"
+
+        if segmentation_table_name in self.get_existing_tables():
+            logging.warning(f"Table creation failed: {segmentation_table_name} already exists")
+            return {f"Table {table_id} exists "}
+        model = em_models.make_segmentation_model(table_id,
+                                                  schema_type,
+                                                  pcg_table_name,
+                                                  version)
+
+        self.base.metadata.tables[model.__name__].create(bind=self.engine)
+        self.commit_session()
+        creation_time = datetime.datetime.now()
+
+        logging.info(f"Table: {table_id} created using {model} model at {creation_time}")
+        return {"Created Succesfully": True, "Table Name": model.__name__}
+
+
+    def get_table_metadata(self, aligned_volume: str, table_name: str):
+        table_id = build_table_id(aligned_volume, table_name)
         metadata = self.cached_session.query(AnnoMetadata).\
                         filter(AnnoMetadata.table_name==table_id).first()
         metadata.__dict__.pop('_sa_instance_state')
         return metadata.__dict__
 
+    def get_table_schema(self, aligned_volume: str, table_name: str):
+        table_metadata = self.get_table_metadata(aligned_volume, table_name)
+        return table_metadata['schema_type']
+
     def get_table_sql_metadata(self, table_name):
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
-         
 
     def get_model_columns(self, table_id: str) -> list:
         """ Return list of column names and types of a given table
@@ -156,7 +211,7 @@ class DynamicAnnotationInterface:
         """
         try:
             db_columns = self.insp.get_columns(table_id)
-        except ValueError as error:
+        except TableNameNotFound as error:
             logging.error(f"Error: {error}. No table name exists with name {table_id}.")
         model_columns = []
         for column in db_columns:
@@ -175,12 +230,27 @@ class DynamicAnnotationInterface:
         metadata = self.cached_session.query(AnnoMetadata).all()
         return [m.table_name for m in metadata]
 
+    def has_table(self, table_name: str) -> bool:
+        """Check if a table exists
+
+        Parameters
+        ----------
+        table_name : str
+            name of the table
+
+        Returns
+        -------
+        bool
+            whether the table exists
+        """
+        return table_name in self.get_existing_tables()
+
     def cached_table(self, table_id: str) -> DeclarativeMeta:
         """ Returns cached table 'DeclarativeMeta' callable for querying.
 
         Parameters
         ----------
-        table_name : str
+        table_id : str
             Table name formatted in the form: "{aligned_volume}_{table_name}"
         Returns
         -------
@@ -190,200 +260,40 @@ class DynamicAnnotationInterface:
         try:
             self._load_table(table_id)
             return self._cached_tables[table_id]
-        except Exception as error:
+        except TableNameNotFound as error:
             logging.error(f"Cannot load table {error}")
 
     def get_table_row_count(self, table_id: str) -> int:
-        Model = self.cached_table(table_id)
-        return self.cached_session.query(func.count(Model.id)).scalar()
+        model = self.cached_table(table_id)
+        return self.cached_session.query(func.count(model.id)).scalar()
 
     def get_annotation_table_size(self, aligned_volume: str, table_name: str) -> int:
+        """Get the number of annotations in a table
+
+        Parameters
+        ----------
+        aligned_volume: str
+            name of aligned_volume to use as database
+        table_name : str
+            name of table contained within the aligned_volume database
+
+        Returns
+        -------
+        int
+            number of annotations
+        """
         table_id = build_table_id(aligned_volume, table_name)
         Model = self.cached_table(table_id)
         return self.cached_session.query(Model).count()
 
-    def get_annotations(self, aligned_volume: str,
-                              table_name: str,
-                              schema_type: str,
-                              annotation_ids: List[int]) -> dict:
-        """ Get list of annotations from database by id.
-
-        Parameters
-        ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        anno_id : int
-            annotation id 
-
-        Returns
-        -------
-        list
-            list of annotation data dicts
-        """
+    def _drop_table(self, aligned_volume: str, table_name: str):
         table_id = build_table_id(aligned_volume, table_name)
-
-        AnnotationModel = self.cached_table(table_id)
-        
-        annotations = self.cached_session.query(AnnotationModel).\
-                            filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
-
-        try:
-            FlatSchema = get_flat_schema(schema_type)
-            schema = FlatSchema(unknown=INCLUDE)
-            data = []
-            
-            for anno in annotations: 
-                anno_data = anno.__dict__
-                anno_data['created'] = str(anno_data.get('created'))
-                anno_data['deleted'] = str(anno_data.get('deleted'))
-                anno_data.pop('_sa_instance_state', None)
-                merged_data = {**anno_data}
-                data.append(merged_data)
-
-            return schema.load(data, many=True)
-            
-        except Exception as e:
-            logging.warning(f"No entries found for {annotation_ids}")
-            return
-        
-    def insert_annotations(self, aligned_volume: str,
-                                 table_name:str,
-                                 schema_type: str,
-                                 annotations: List[dict]):
-        """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
-        using a bulk insert script.
-
-        Parameters
-        ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        table_name: str
-        schema_type : str
-            Type of schema to use, must be a valid type from EMAnnotationSchemas
-        annotations : dict
-            Dictionary of single annotation data. Must be flat dict unless structure_data flag is 
-            set to True.
-        """
-        if len(annotations) > 10_000:
-            return f"WARNING: Inserting {len(annotations)} annotations is too large."
-
-
-        table_id = build_table_id(aligned_volume, table_name)
-        formatted_anno_data = []
-        
-        AnnotationModel = self.cached_table(table_id)
-        
-        for annotation in annotations:
-            
-            annotation_data, __ = self._get_flattened_schema_data(schema_type, annotation)
-            if annotation.get('id'):
-                annotation_data['id'] = annotation['id']
-                
-            annotation_data['created'] = datetime.datetime.now()
-            annotation_data['valid'] = True
-            formatted_anno_data.append(annotation_data)
-            
-        annos = [AnnotationModel(**annotation_data) for annotation_data in formatted_anno_data]
-
-        try:
-            self.cached_session.add_all(annos)
-                            
-        except InvalidRequestError as e:
-            self.cached_session.rollback()
-        finally:
-            self.commit_session()
-
-    def update_annotation(self, aligned_volume: str,
-                                 table_name: str,
-                                 schema_type: str,
-                                 anno_id: int,
-                                 new_annotation: dict):
-        """Updates an annotation by inserting a new row. 
-
-        Parameters
-        ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        schema_type : str
-            Type of schema to use, must be a valid type from EMAnnotationSchemas
-        anno_id : int
-            Primary key ID to select annotation for updating.
-        new_annotation : dict
-            new annotation data
-        """
-        table_id = build_table_id(aligned_volume, table_name)
-
-        AnnotationModel = self.cached_table(table_id)
-        
-        new_annotation, __ = self._get_flattened_schema_data(schema_type, new_annotation)
-        
-        new_annotation['created'] = datetime.datetime.now()
-        new_annotation['valid'] = True
-
-        new_data = AnnotationModel(**new_annotation)
-      
-        old_anno = self.cached_session.query(AnnotationModel).filter(AnnotationModel.id==anno_id).one()
-        
-        self.cached_session.add(new_data)
-        self.cached_session.flush()
-        
-        old_anno.superceded_id = new_data.id
-        old_anno.valid = False
-                
-        self.commit_session()
-
-    def delete_annotations(self, aligned_volume: str, table_name: str, anno_ids: List[int]):
-        """Flags an annotation for deletion via deletion timestamp. Will not remove data from
-        the database.
-
-        Parameters
-        ----------
-        aligned_volume : str
-            Table name formatted in the form: "{dataset_name}_{table_name}"
-        anno_id : int
-            Primary key ID to select annotation for deletion.
-        """
-        table_id = build_table_id(aligned_volume, table_name)
-        Model = self.cached_table(table_id)
-
-        annotations = self.cached_session.query(Model).filter(Model.id.in_(anno_ids)).all()
-        deleted_time = datetime.datetime.now()
-        for annotation in annotations:
-            annotation.deleted = deleted_time
-
-        self.commit_session()
-    def delete_table(self, table_name: str):
-        """marks a table for deletion, which will
-           remove it from user visible calls
-           and stop materialization from happening on this table
-           only updates metadata to reflect deleted timestamp.
-
-        Args:
-            table_name (str): name of table to mark for deletion
-
-        Returns:
-            bool: whether table was successfully deleted
-        """
-        metadata = self.cached_session.query(AnnoMetadata).\
-                filter(AnnoMetadata.table_name==table_id).first()
-        metadata.deleted = datetime.datetime.now()
-        try:
-            self.cached_session.update(metadata)
-            self.commit_session() 
-            return True
-         except InvalidRequestError as e:
-            self.cached_session.rollback()
-            return False
-
-            
-    def drop_table(self, table_name: str):
-        anno_table = self.base.metadata.tables.get(table_name)
-        seg_table = self.base.metadata.tables.get(f"{table_name}_segmentation")
-        if all(v is not None for v in [anno_table, seg_table]):
-            logging.info(f'Deleting {table_name} table')
-            self.base.metadata.drop_all(self.engine, [anno_table, seg_table], checkfirst=True)
-            if self._is_cached(anno_table):
-                del self.cached_table[anno_table], self.cached_table[seg_table]
+        table = self.base.metadata.tables.get(table_id)
+        if table:
+            logging.info(f'Deleting {table_id} table')
+            self.base.metadata.drop_all(self.engine, [table], checkfirst=True)
+            if self._is_cached(table):
+                del self._cached_tables[table]
             return True
         return False
 
@@ -394,10 +304,9 @@ class DynamicAnnotationInterface:
 
     def _get_flattened_schema_data(self, schema_type: str, data: dict) -> dict:
         schema_type = get_schema(schema_type)
-        logging.info(f"DATA: {data}                ")
         schema = schema_type(context={'postgis': True})
         data = schema.load(data, unknown=EXCLUDE)
-       
+
         check_is_nested = (any(isinstance(i, dict) for i in data.values()))
         if check_is_nested:
             data = flatten_dict(data)
@@ -407,24 +316,7 @@ class DynamicAnnotationInterface:
         return self._map_values_to_schema(data, flat_annotation_schema), self._map_values_to_schema(data, flat_segmentation_schema)
 
     def _map_values_to_schema(self, data, schema):
-        return {key: data[key] for key, value in schema._declared_fields.items() if key in data} 
-          
-    def _drop_all(self):
-        self.base.metadata.reflect(bind=self.engine)
-        self.base.metadata.drop_all(self.engine)
-
-    def _reset_table(self, dataset_name, table_name, n_retries=20, delay_s=5):
-        metadata = self.get_table_sql_metadata(table_name)
-
-        if self.drop_table(table_name=table_name):
-            for _ in range(n_retries):
-                time.sleep(delay_s)
-                try:
-                    if self.create_table(**metadata):
-                        return True
-                except:
-                    time.sleep(delay_s)
-        return False
+        return {key: data[key] for key, value in schema._declared_fields.items() if key in data}
 
     def _is_cached(self, table_name: str) -> bool:
         """ Check if table is loaded into cached instance dict of tables
