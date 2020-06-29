@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, inspect, func
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError, IntegrityError
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.engine.url import make_url
@@ -67,19 +67,19 @@ class DynamicAnnotationInterface:
         self._cached_tables = {}
 
     @property
-    def cached_session(self):
+    def cached_session(self)->Session:
         if self._cached_session is None:
             self._cached_session = self.session()
         return self._cached_session
 
     def commit_session(self):
         try:
-            self._cached_session.commit()
+            self.cached_session.commit()
         except Exception:
-            self._cached_session.rollback()
+            self.cached_session.rollback()
             logging.exception(f"SQL Error")
         finally:
-            self._cached_session.close()
+            self.cached_session.close()
         self._cached_session = None
 
     def create_annotation_table(self,
