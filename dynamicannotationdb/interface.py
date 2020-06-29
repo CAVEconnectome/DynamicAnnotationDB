@@ -20,7 +20,7 @@ import time
 
 class DynamicAnnotationInterface:
 
-    def __init__(self, sql_uri: str):
+    def __init__(self, aligned_volume: str, sql_uri: str):
         """ Annotation DB interface layer for creating and querying tables in SQL
 
         Parameters
@@ -30,24 +30,9 @@ class DynamicAnnotationInterface:
         create_metadata : bool, optional
             Creates additional columns on new tables for CRUD operations, by default True
         """
+        sql_uri = self.create_or_select_database(aligned_volume, sql_uri)
 
-        self.sql_uri = make_url(sql_uri)
-        base_uri = sql_uri.rpartition("/")[0]
-
-        temp_engine = create_engine(base_uri, poolclass=NullPool)
-
-        with temp_engine.connect() as connection:
-            connection.execute("commit")
-            result = connection.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{self.sql_uri.database}'")
-            if not result.fetchone():
-                logging.info(f"Creating new database {self.sql_uri.database}")
-                connection.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
-                           WHERE pid <> pg_backend_pid() AND datname = '{self.sql_uri.database}';")
-                connection.execute(f"create database {self.sql_uri.database} template template_postgis")
-
-        temp_engine.dispose()
-
-        self.engine = create_engine(self.sql_uri,
+        self.engine = create_engine(sql_uri,
                                     pool_recycle=3600,
                                     pool_size=20,
                                     max_overflow=50)
@@ -65,6 +50,39 @@ class DynamicAnnotationInterface:
 
         self._cached_session = None
         self._cached_tables = {}
+
+    def create_or_select_database(self, aligned_volume: str, sql_uri: str):
+        """Create a new database with the name of the aligned volume. Checks if 
+        database exists before creating.
+
+        Parameters
+        ----------
+        aligned_volume : str
+            name of aligned volume which the database name will inherent 
+        sql_uri : str
+            base path to the sql server
+
+        Returns
+        -------
+        sql_url instance
+        """
+        sql_base_uri = sql_uri.rpartition("/")[0]
+
+        sql_uri = make_url(f"{sql_base_uri}/{aligned_volume}")
+        
+
+        temp_engine = create_engine(sql_base_uri, poolclass=NullPool)
+
+        with temp_engine.connect() as connection:
+            connection.execute("commit")
+            result = connection.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{sql_uri.database}'")
+            if not result.fetchone():
+                logging.info(f"Creating new database {sql_uri.database}")
+                connection.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+                           WHERE pid <> pg_backend_pid() AND datname = '{sql_uri.database}';")
+                connection.execute(f"create database {sql_uri.database} template template_postgis")
+        temp_engine.dispose()
+        return sql_uri
 
     @property
     def cached_session(self)->Session:
