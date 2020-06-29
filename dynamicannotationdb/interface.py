@@ -11,7 +11,7 @@ from emannotationschemas.flatten import flatten_dict
 from emannotationschemas import models as em_models
 from dynamicannotationdb.key_utils import build_table_id
 from dynamicannotationdb.models import Metadata as AnnoMetadata
-from dynamicannotationdb.errors import TableNameNotFound
+from dynamicannotationdb.errors import TableNameNotFound, TableAlreadyExists
 from typing import List
 import logging
 import datetime
@@ -105,7 +105,7 @@ class DynamicAnnotationInterface:
                                 table_name: str,
                                 schema_type:str,
                                 metadata_dict: dict):
-        """Create new annotation table unless already exists. 
+        """Create new annotation table unless already exists
 
         Parameters
         ----------
@@ -129,7 +129,7 @@ class DynamicAnnotationInterface:
 
         if table_id in self.get_existing_tables():
             logging.warning(f"Table creation failed: {table_id} already exists")
-            return f"Table {table_id} already exists"
+            raise TableAlreadyExists
 
         model = em_models.make_annotation_model(table_id,
                                                 schema_type,
@@ -180,24 +180,26 @@ class DynamicAnnotationInterface:
             description of table that is created
         """
         table_id = build_table_id(aligned_volume, annotation_table_name)
-
         segmentation_table_name = f"{table_id}_{pcg_table_name}_v{version}"
 
-        if segmentation_table_name in self.get_existing_tables():
-            logging.warning(f"Table creation failed: {segmentation_table_name} already exists")
-            return {f"Table {table_id} exists "}
-        model = em_models.make_segmentation_model(table_id,
-                                                  schema_type,
-                                                  pcg_table_name,
-                                                  version)
+        if table_id in self.get_existing_tables():
 
-        self.base.metadata.tables[model.__name__].create(bind=self.engine)
-        self.commit_session()
-        creation_time = datetime.datetime.now()
+            if segmentation_table_name in self.get_existing_tables():
+                logging.warning(f"Table creation failed: {segmentation_table_name} already exists")
+                return {f"Table {table_id} exists "}
+            model = em_models.make_segmentation_model(table_id,
+                                                      schema_type,
+                                                      pcg_table_name,
+                                                      version)
 
-        logging.info(f"Table: {table_id} created using {model} model at {creation_time}")
-        return {"Created Succesfully": True, "Table Name": model.__name__}
+            self.base.metadata.tables[model.__name__].create(bind=self.engine)
+            self.commit_session()
+            creation_time = datetime.datetime.now()
 
+            logging.info(f"Table: {table_id} created using {model} model at {creation_time}")
+            return {"Created Succesfully": True, "Table Name": model.__name__}
+        else:
+            raise TableNameNotFound
 
     def get_table_metadata(self, aligned_volume: str, table_name: str):
         table_id = build_table_id(aligned_volume, table_name)
