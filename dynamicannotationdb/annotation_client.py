@@ -1,5 +1,5 @@
 from dynamicannotationdb.interface import DynamicAnnotationInterface
-from dynamicannotationdb.errors import AnnotationInsertLimitExceeded
+from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, NoAnnotationsFoundWithID
 from dynamicannotationdb.models import Metadata as AnnoMetadata
 from dynamicannotationdb.key_utils import get_table_name_from_table_id, build_table_id
 from emannotationschemas import get_flat_schema
@@ -92,8 +92,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         Returns
         -------
-        [type]
-            [description]
+        str
+           desciption of table at creation time
         """
         # TODO: check that schemas that are reference schemas
         # have a reference_table in their metadata
@@ -156,8 +156,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         Returns
         -------
-        [type]
-            [description]
+        bool
+            True is succesfully inserted annotations
 
         Raises
         ------
@@ -188,13 +188,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         annos = [AnnotationModel(**annotation_data) for annotation_data in formatted_anno_data]
 
-        try:
-            self.cached_session.add_all(annos)
-            self.commit_session()
-        except InvalidRequestError as e:
-            self.cached_session.rollback()
-            logging.error(f"Data commit error: {e}")
-            return False
+        self.cached_session.add_all(annos)
+        self.commit_session()
         return True
 
     def get_annotations(self, table_name: str,
@@ -239,7 +234,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         except Exception as e:
             logging.exception(e)
-            return f"No entries found for {annotation_ids}"
+            raise NoAnnotationsFoundWithID(annotation_ids)
 
     def update_annotation(self, table_name: str,
                           annotation: dict):
@@ -294,8 +289,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             self.commit_session()
 
             return f"id {anno_id} updated"
-        except NoResultFound:
-            return f"No result found for {anno_id}"
+        except NoResultFound as e:
+            return f"No result found for {anno_id}. Error: {e}"
 
     def delete_annotation(self, table_name: str,
                           annotation_ids: List[int]):
