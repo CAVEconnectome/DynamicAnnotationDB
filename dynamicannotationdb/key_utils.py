@@ -1,27 +1,72 @@
-def build_table_id(aligned_volume, table_name):
-    """ Combines aligned_volume name and specified table name to create specific table id
+def build_table_id(aligned_volume: str, table_name: str) -> str:
+    """Combines aligned_volume name and specified table name to 
+    create specific table id
 
-    :param aligned_volume: str
-    :param table_name: str
-    :return: str
+
+    Parameters
+    ----------
+    aligned_volume : str
+        name of aligned volume
+    table_name : str
+        name of table assigned to an aligned volume
+
+    Returns
+    -------
+    str
+        formatted table_id 
     """
+    return f"annov1__{aligned_volume}__{table_name}"
 
-    return "annov1__%s__%s" % (aligned_volume, table_name)
+def build_segmentation_table_id(aligned_volume: str, 
+                                annotation_table_name: str, 
+                                pcg_table_name: str,
+                                version: int) -> str:
+    """Create a table id that combines annotation table and appends 
+    segmentation table name and version
 
+    Parameters
+    ----------
+    aligned_volume : str
+        name of aligned volume
+    annotation_table_name : str
+        exiting annotation table name
+    pcg_table_name : str
+        name of pychunkedgraph table
+    version : int
+        version of pychunkgraph segmentation
 
-def get_table_name_from_table_id(table_id):
-    """ Extracts table name from table_id
+    Returns
+    -------
+    str
+        formatted name of table combining the annotation table id with 
+        pychunkedgraph table name and segmentation version
+    """
+    return f"annov1__{aligned_volume}__{annotation_table_name}__{pcg_table_name}__v{version}"
 
-    :param table_id: str
-    :return: str
+def get_table_name_from_table_id(table_id: str) -> str:
+    """Extracts table name from table_id string
+    Parameters
+    ----------
+    table_id : str
+
+    Returns
+    -------
+    str
+        table name in table id
     """
     return table_id.split("__")[-1]
 
 
-def get_dataset_name_from_table_id(table_id):
-    """ Extracts dataset name from table_id
+def get_dataset_name_from_table_id(table_id: str) -> str:
+    """Extracts the aligned volume name from table id string
 
-    :param table_id: str
-    :return: str
+    Parameters
+    ----------
+    table_id : str
+
+    Returns
+    -------
+    str
+        name of aligned volume in table id
     """
     return table_id.split("__")[1]
