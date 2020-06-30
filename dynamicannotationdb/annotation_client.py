@@ -14,8 +14,9 @@ import json
 
 
 class DynamicAnnotationClient(DynamicAnnotationInterface):
+    
     def __init__(self, aligned_volume, sql_base_uri):
-        super().__init__(aligned_volume, sql_base_uri)
+        super().__init__(sql_base_uri)
 
         self.aligned_volume = aligned_volume
 
@@ -63,13 +64,15 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             all table metadata that exist
         """
         return [
-            self.get_table_metadata(self.aligned_volume, table_name)
-            for table_name in self._get_existing_table_ids()
+            self.get_table_metadata(self.aligned_volume, table_id)
+            for table_id in self._get_existing_table_ids()
         ]
 
     def create_table(self, table_name: str,
                      schema_type: str,
-                     metadata_dict: dict):
+                     description: str,
+                     user_id: str,
+                     reference_table: str = None):
         """Create a new annotation table
 
         Parameters
@@ -100,7 +103,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         return self.create_annotation_table(self.aligned_volume,
                                             table_name,
                                             schema_type,
-                                            metadata_dict)
+                                            description,
+                                            user_id,
+                                            reference_table)
 
     def delete_table(self, table_name: str) -> bool:
         """Marks a table for deletion, which will
