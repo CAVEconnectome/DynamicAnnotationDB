@@ -15,7 +15,7 @@ import json
 
 class DynamicMaterializationClient(DynamicAnnotationInterface):
     def __init__(self, aligned_volume, sql_uri):
-        super().__init__(aligned_volume, sql_uri)
+        super().__init__(sql_uri)
     
         self.aligned_volume = aligned_volume
         self._table = None
@@ -56,14 +56,14 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
     def create_and_attach_seg_table(self, table_name: str,
                                           pcg_table_name: str,
-                                          version: int = 0):
+                                          pcg_version: int = 0):
                 
         schema_type = self.get_table_schema(self.aligned_volume, table_name)
         return self.create_segmentation_table(self.aligned_volume,
                                               table_name,
                                               schema_type,
                                               pcg_table_name,
-                                              version)
+                                              pcg_version)
 
     def drop_table(self, table_name: str) -> bool:
         return self._drop_table(self.aligned_volume, table_name)
@@ -173,12 +173,12 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
 
     def update_linked_annotations(self, aligned_volume: str,
-                                       table_name: str,
-                                       pcg_table_name: str,
-                                       pcg_version: int,
-                                       schema_type: str,
-                                       anno_id: int,
-                                       new_annotations: dict):
+                                        table_name: str,
+                                        pcg_table_name: str,
+                                        pcg_version: int,
+                                        schema_type: str,
+                                        anno_id: int,
+                                        new_annotations: dict):
         """Updates an annotation by inserting a new row. The original annotation
         will refer to the new row with a superceded_id. Does not update inplace.
 
