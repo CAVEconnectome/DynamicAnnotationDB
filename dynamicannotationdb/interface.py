@@ -9,7 +9,7 @@ from marshmallow import EXCLUDE
 from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.flatten import flatten_dict
 from emannotationschemas import models as em_models
-from dynamicannotationdb.key_utils import build_table_id
+from dynamicannotationdb.key_utils import build_table_id, build_segmentation_table_id
 from dynamicannotationdb.models import Metadata as AnnoMetadata
 from dynamicannotationdb.errors import TableNameNotFound, TableAlreadyExists
 from typing import List
@@ -20,7 +20,7 @@ import time
 
 class DynamicAnnotationInterface:
 
-    def __init__(self, aligned_volume: str, sql_uri: str):
+    def __init__(self, sql_uri: str):
         """ Annotation DB interface layer for creating and querying tables in SQL
 
         Parameters
@@ -30,9 +30,8 @@ class DynamicAnnotationInterface:
         create_metadata : bool, optional
             Creates additional columns on new tables for CRUD operations, by default True
         """
-        sql_uri = self.create_or_select_database(aligned_volume, sql_uri)
-
-        self.engine = create_engine(sql_uri,
+        self.sql_uri = sql_uri
+        self.engine = create_engine(self.sql_uri,
                                     pool_recycle=3600,
                                     pool_size=20,
                                     max_overflow=50)
@@ -49,7 +48,7 @@ class DynamicAnnotationInterface:
         self.insp = inspect(self.engine)
 
         self._cached_session = None
-        self.__cached_tables = {}
+        self._cached_tables = {}
 
     def create_or_select_database(self, aligned_volume: str, sql_uri: str):
         """Create a new database with the name of the aligned volume. Checks if 
@@ -84,6 +83,7 @@ class DynamicAnnotationInterface:
         temp_engine.dispose()
         return sql_uri
 
+
     @property
     def cached_session(self)->Session:
         if self._cached_session is None:
@@ -104,7 +104,9 @@ class DynamicAnnotationInterface:
                                 aligned_volume: str,
                                 table_name: str,
                                 schema_type:str,
-                                metadata_dict: dict):
+                                description: str,
+                                user_id: str,
+                                reference_table: str = None):
         """Create new annotation table unless already exists
 
         Parameters
@@ -130,34 +132,36 @@ class DynamicAnnotationInterface:
         if table_id in self._get_existing_table_ids():
             logging.warning(f"Table creation failed: {table_id} already exists")
             raise TableAlreadyExists
-
+        
         model = em_models.make_annotation_model(table_id,
                                                 schema_type,
-                                                metadata_dict,
                                                 with_crud_columns=True)
 
         self.base.metadata.create_all(bind=self.engine)
 
         creation_time = datetime.datetime.now()
-
-        metadata_dict.update({
+        
+        metadata_dict = {
+            'description': description,
+            'user_id': user_id,
+            'reference_table': reference_table,
             'schema_type': schema_type,
             'table_name': table_id,
             'valid': True,
             'created': creation_time
-        })
+        }
         logging.info(f"Metadata for table: {table_id} is {metadata_dict}")
         anno_metadata = AnnoMetadata(**metadata_dict)
         self.cached_session.add(anno_metadata)
         self.commit_session()
         logging.info(f"Table: {table_id} created using {model} model at {creation_time}")
-        return {"Created Succesfully": True, "Table Name": table_id, "Description": metadata_dict['description']}
+        return table_id
 
     def create_segmentation_table(self, aligned_volume: str,
                                         annotation_table_name: str,
                                         schema_type:str,
                                         pcg_table_name: str,
-                                        version: int):
+                                        pcg_version: int):
         """Create new segmentation table linked to an annotation table
          unless it already exists. 
 
@@ -171,32 +175,32 @@ class DynamicAnnotationInterface:
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         pcg_table_name : str
             name of pychunked graph segmentation to use
-        version : int
-            version of table
+        pcg_version : int
+            segmentation version
 
         Returns
         -------
         dict
             description of table that is created
         """
-        table_id = build_table_id(aligned_volume, annotation_table_name)
-        segmentation_table_name = f"{table_id}_{pcg_table_name}_v{version}"
+        annotation_table_id = build_table_id(aligned_volume, annotation_table_name)
 
-        if table_id in self._get_existing_table_ids():
+        segmentation_table_id = build_segmentation_table_id(aligned_volume,
+                                                            annotation_table_name,
+                                                            pcg_table_name,
+                                                            pcg_version)
 
-            if segmentation_table_name in self._get_existing_table_ids():
-                logging.warning(f"Table creation failed: {segmentation_table_name} already exists")
-                return {f"Table {table_id} exists "}
-            model = em_models.make_segmentation_model(table_id,
-                                                      schema_type,
-                                                      pcg_table_name,
-                                                      version)
+        if annotation_table_id in self._get_existing_table_ids():
+            model = em_models.make_segmentation_model(annotation_table_id,
+                                                    schema_type,
+                                                    pcg_table_name,
+                                                    pcg_version)
 
             self.base.metadata.tables[model.__name__].create(bind=self.engine)
             self.commit_session()
             creation_time = datetime.datetime.now()
 
-            logging.info(f"Table: {table_id} created using {model} model at {creation_time}")
+            logging.info(f"Table: {segmentation_table_id} created using {model} model at {creation_time}")
             return {"Created Succesfully": True, "Table Name": model.__name__}
         else:
             raise TableNameNotFound
@@ -250,12 +254,12 @@ class DynamicAnnotationInterface:
         metadata = self.cached_session.query(AnnoMetadata).all()
         return [m.table_name for m in metadata]
 
-    def has_table(self, table_name: str) -> bool:
+    def has_table(self, table_id: str) -> bool:
         """Check if a table exists
 
         Parameters
         ----------
-        table_name : str
+        table_id : str
             name of the table
 
         Returns
@@ -263,7 +267,7 @@ class DynamicAnnotationInterface:
         bool
             whether the table exists
         """
-        return table_name in self._get_existing_table_ids()
+        return table_id in self._get_existing_table_ids()
 
     def _cached_table(self, table_id: str) -> DeclarativeMeta:
         """ Returns cached table 'DeclarativeMeta' callable for querying.
@@ -279,7 +283,7 @@ class DynamicAnnotationInterface:
         """
         try:
             self._load_table(table_id)
-            return self.__cached_tables[table_id]
+            return self._cached_tables[table_id]
         except TableNameNotFound as error:
             logging.error(f"Cannot load table {error}")
 
@@ -313,14 +317,22 @@ class DynamicAnnotationInterface:
             logging.info(f'Deleting {table_id} table')
             self.base.metadata.drop_all(self.engine, [table], checkfirst=True)
             if self._is_cached(table):
-                del self.__cached_tables[table]
+                del self._cached_tables[table]
             return True
         return False
 
-    def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:
+    def get_annotation_model(self, aligned_volume, table_name):
+        table_id = build_table_id(aligned_volume, table_name)
+        return self._get_model_from_table_id(table_id)
+
+    def get_segmentation_model(self, aligned_volume, table_name, pcg_table_name, version):
+        table_id = build_segmentation_table_id(aligned_volume, table_name, pcg_table_name, version)
+        return self._get_model_from_table_id(table_id)
+
+    def _get_model_from_table_id(self, table_id: str) -> DeclarativeMeta:
         self.mapped_base = automap_base()
         self.mapped_base.prepare(self.engine, reflect=True)
-        return self.mapped_base.classes[table_name]
+        return self.mapped_base.classes[table_id]
 
     def _get_flattened_schema_data(self, schema_type: str, data: dict) -> dict:
         schema_type = get_schema(schema_type)
@@ -338,13 +350,13 @@ class DynamicAnnotationInterface:
     def _map_values_to_schema(self, data, schema):
         return {key: data[key] for key, value in schema._declared_fields.items() if key in data}
 
-    def _is_cached(self, table_name: str) -> bool:
+    def _is_cached(self, table_id: str) -> bool:
         """ Check if table is loaded into cached instance dict of tables
 
         Parameters
         ----------
-        table_name : str
-            Name of table to check if loaded
+        table_id : str
+            Name of table_id in format <aligned_volume>__<table_name> to check if loaded
 
         Returns
         -------
@@ -352,9 +364,9 @@ class DynamicAnnotationInterface:
             True if table is loaded else False.
         """
 
-        return table_name in self.__cached_tables
+        return table_id in self._cached_tables
 
-    def _load_table(self, table_name: str):
+    def _load_table(self, table_id: str):
         """ Load existing table into cached lookup dict instance
 
         Parameters
@@ -367,13 +379,13 @@ class DynamicAnnotationInterface:
         bool
             Returns True if table exists and is loaded into cached table dict.
         """
-        if self._is_cached(table_name):
+        if self._is_cached(table_id):
             return True
 
         try:
-            self.__cached_tables[table_name] = self._get_model_from_table_name(table_name)
+            self._cached_tables[table_id] = self._get_model_from_table_id(table_id)
             return True
         except KeyError as key_error:
-            if table_name in self._get_existing_table_ids():
+            if table_id in self._get_existing_table_ids():
                 logging.error(f"Could not load table: {key_error}")
             return False
