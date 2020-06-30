@@ -21,11 +21,11 @@ def test_get_table_sql_metadata():
     assert False
 
 
-def test_get_model_columns():
+def test__get_model_columns():
     assert False
 
 
-def test_get_existing_tables():
+def test__get_existing_table_ids():
     assert False
 
 
@@ -33,11 +33,11 @@ def test_has_table():
     assert False
 
 
-def test_cached_table():
+def test__cached_table():
     assert False
 
 
-def test_get_table_row_count():
+def test__get_table_row_count():
     assert False
 
 

@@ -26,10 +26,10 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         return self._table
 
     def load_table(self, table_name: str):
-        self._table = self.cached_table(table_name)
+        self._table = self._cached_table(table_name)
         return self._table
 
-    def get_existing_tables_by_name(self) -> List[str]:
+    def _get_existing_table_ids_by_name(self) -> List[str]:
         """Get the table names of table that exist
 
         Returns
@@ -37,11 +37,11 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         List[str]
             list of table names that exist
         """
-        table_ids = self.get_existing_tables()
+        table_ids = self._get_existing_table_ids()
         table_names = [get_table_name_from_table_id(tid) for tid in table_ids]
         return table_names
 
-    def get_existing_tables_metadata(self) -> List[dict]:
+    def _get_existing_table_ids_metadata(self) -> List[dict]:
         """Get all the metadata for all tables
 
         Returns
@@ -51,7 +51,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         """
         return [
             self.get_table_metadata(self.aligned_volume, table_name)
-            for table_name in self.get_existing_tables()
+            for table_name in self._get_existing_table_ids()
         ]
 
     def create_and_attach_seg_table(self, table_name: str,
@@ -92,8 +92,8 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         
         table_id = build_table_id(aligned_volume, table_name)
 
-        AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
+        AnnotationModel = self._cached_table(table_id)
+        SegmentationModel = self._cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
         
         annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
                                           join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
@@ -146,8 +146,8 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         formatted_anno_data = []
         formatted_seg_data = []
         
-        AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
+        AnnotationModel = self._cached_table(table_id)
+        SegmentationModel = self._cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
         
         for annotation in annotations:
             
@@ -194,8 +194,8 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         """
         table_id = build_table_id(aligned_volume, table_name)
 
-        AnnotationModel = self.cached_table(table_id)
-        SegmentationModel = self.cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
+        AnnotationModel = self._cached_table(table_id)
+        SegmentationModel = self._cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
         
         new_annotation, __ = self._get_flattened_schema_data(schema_type, new_annotations)
         

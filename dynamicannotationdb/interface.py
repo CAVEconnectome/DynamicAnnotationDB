@@ -49,7 +49,7 @@ class DynamicAnnotationInterface:
         self.insp = inspect(self.engine)
 
         self._cached_session = None
-        self._cached_tables = {}
+        self.__cached_tables = {}
 
     def create_or_select_database(self, aligned_volume: str, sql_uri: str):
         """Create a new database with the name of the aligned volume. Checks if 
@@ -127,7 +127,7 @@ class DynamicAnnotationInterface:
         """
         table_id = build_table_id(aligned_volume, table_name)
 
-        if table_id in self.get_existing_tables():
+        if table_id in self._get_existing_table_ids():
             logging.warning(f"Table creation failed: {table_id} already exists")
             raise TableAlreadyExists
 
@@ -182,9 +182,9 @@ class DynamicAnnotationInterface:
         table_id = build_table_id(aligned_volume, annotation_table_name)
         segmentation_table_name = f"{table_id}_{pcg_table_name}_v{version}"
 
-        if table_id in self.get_existing_tables():
+        if table_id in self._get_existing_table_ids():
 
-            if segmentation_table_name in self.get_existing_tables():
+            if segmentation_table_name in self._get_existing_table_ids():
                 logging.warning(f"Table creation failed: {segmentation_table_name} already exists")
                 return {f"Table {table_id} exists "}
             model = em_models.make_segmentation_model(table_id,
@@ -216,7 +216,7 @@ class DynamicAnnotationInterface:
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
 
-    def get_model_columns(self, table_id: str) -> list:
+    def _get_model_columns(self, table_id: str) -> list:
         """ Return list of column names and types of a given table
 
         Parameters
@@ -239,7 +239,7 @@ class DynamicAnnotationInterface:
                                         column['type']]))
         return model_columns
 
-    def get_existing_tables(self):
+    def _get_existing_table_ids(self):
         """ Collects table_ids keys of existing tables
 
         Returns
@@ -263,9 +263,9 @@ class DynamicAnnotationInterface:
         bool
             whether the table exists
         """
-        return table_name in self.get_existing_tables()
+        return table_name in self._get_existing_table_ids()
 
-    def cached_table(self, table_id: str) -> DeclarativeMeta:
+    def _cached_table(self, table_id: str) -> DeclarativeMeta:
         """ Returns cached table 'DeclarativeMeta' callable for querying.
 
         Parameters
@@ -279,12 +279,12 @@ class DynamicAnnotationInterface:
         """
         try:
             self._load_table(table_id)
-            return self._cached_tables[table_id]
+            return self.__cached_tables[table_id]
         except TableNameNotFound as error:
             logging.error(f"Cannot load table {error}")
 
-    def get_table_row_count(self, table_id: str) -> int:
-        model = self.cached_table(table_id)
+    def _get_table_row_count(self, table_id: str) -> int:
+        model = self._cached_table(table_id)
         return self.cached_session.query(func.count(model.id)).scalar()
 
     def get_annotation_table_size(self, aligned_volume: str, table_name: str) -> int:
@@ -303,7 +303,7 @@ class DynamicAnnotationInterface:
             number of annotations
         """
         table_id = build_table_id(aligned_volume, table_name)
-        Model = self.cached_table(table_id)
+        Model = self._cached_table(table_id)
         return self.cached_session.query(Model).count()
 
     def _drop_table(self, aligned_volume: str, table_name: str):
@@ -313,7 +313,7 @@ class DynamicAnnotationInterface:
             logging.info(f'Deleting {table_id} table')
             self.base.metadata.drop_all(self.engine, [table], checkfirst=True)
             if self._is_cached(table):
-                del self._cached_tables[table]
+                del self.__cached_tables[table]
             return True
         return False
 
@@ -352,7 +352,7 @@ class DynamicAnnotationInterface:
             True if table is loaded else False.
         """
 
-        return table_name in self._cached_tables
+        return table_name in self.__cached_tables
 
     def _load_table(self, table_name: str):
         """ Load existing table into cached lookup dict instance
@@ -371,9 +371,9 @@ class DynamicAnnotationInterface:
             return True
 
         try:
-            self._cached_tables[table_name] = self._get_model_from_table_name(table_name)
+            self.__cached_tables[table_name] = self._get_model_from_table_name(table_name)
             return True
         except KeyError as key_error:
-            if table_name in self.get_existing_tables():
+            if table_name in self._get_existing_table_ids():
                 logging.error(f"Could not load table: {key_error}")
             return False

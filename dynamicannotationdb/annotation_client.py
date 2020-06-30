@@ -39,7 +39,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         DeclarativeMeta
             the sqlalchemy table of that name
         """
-        self._table = self.cached_table(table_name)
+        self._table = self._cached_table(table_name)
         return self._table
 
     def get_existing_table_names(self) -> List[str]:
@@ -50,11 +50,11 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         List[str]
             list of table names that exist
         """
-        table_ids = self.get_existing_tables()
+        table_ids = self._get_existing_table_ids()
         table_names = [get_table_name_from_table_id(tid) for tid in table_ids]
         return table_names
 
-    def get_existing_tables_metadata(self) -> List[dict]:
+    def _get_existing_table_ids_metadata(self) -> List[dict]:
         """Get all the metadata for all tables
 
         Returns
@@ -64,7 +64,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         return [
             self.get_table_metadata(self.aligned_volume, table_name)
-            for table_name in self.get_existing_tables()
+            for table_name in self._get_existing_table_ids()
         ]
 
     def create_table(self, table_name: str,
@@ -173,7 +173,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         table_id = build_table_id(self.aligned_volume, table_name)
 
-        AnnotationModel = self.cached_table(table_id)
+        AnnotationModel = self._cached_table(table_id)
 
         formatted_anno_data = []
         for annotation in annotations:
@@ -212,7 +212,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         table_id = build_table_id(self.aligned_volume, table_name)
 
-        AnnotationModel = self.cached_table(table_id)
+        AnnotationModel = self._cached_table(table_id)
 
         annotations = self.cached_session.query(AnnotationModel). \
             filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
@@ -264,7 +264,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         table_id = build_table_id(self.aligned_volume, table_name)
 
-        AnnotationModel = self.cached_table(table_id)
+        AnnotationModel = self._cached_table(table_id)
 
         new_annotation, __ = self._get_flattened_schema_data(schema_type, annotation)
 
@@ -310,7 +310,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         ------
         """
         table_id = build_table_id(self.aligned_volume, table_name)
-        Model = self.cached_table(table_id)
+        Model = self._cached_table(table_id)
 
         annotations = self.cached_session.query(Model).filter(Model.id.in_(annotation_ids)).all()
         if annotations:

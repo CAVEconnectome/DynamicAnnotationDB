@@ -5,11 +5,11 @@ def test_load_table():
     assert False
 
 
-def test_get_existing_tables_by_name():
+def test__get_existing_table_ids_by_name():
     assert False
 
 
-def test_get_existing_tables_metadata():
+def test__get_existing_table_ids_metadata():
     assert False
 
 
