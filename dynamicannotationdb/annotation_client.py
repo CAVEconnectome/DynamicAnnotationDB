@@ -249,8 +249,6 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         ----------
         table_name : str
             name of targeted table to update annotations
-        anno_id : int
-            ID of annotation to update
         annotation : dict
             new data for that annotation
 
