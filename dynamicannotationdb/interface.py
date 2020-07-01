@@ -154,7 +154,7 @@ class DynamicAnnotationInterface:
             'user_id': user_id,
             'reference_table': reference_table,
             'schema_type': schema_type,
-            'table_name': table_id,
+            'table_id': table_id,
             'valid': True,
             'created': creation_time,
             'flat_segmentation_source': flat_segmentation_source
@@ -217,7 +217,7 @@ class DynamicAnnotationInterface:
     def get_table_metadata(self, aligned_volume: str, table_name: str):
         table_id = build_table_id(aligned_volume, table_name)
         metadata = self.cached_session.query(AnnoMetadata).\
-                        filter(AnnoMetadata.table_name==table_id).first()
+                        filter(AnnoMetadata.table_id==table_id).first()
         metadata.__dict__.pop('_sa_instance_state')
         return metadata.__dict__
 

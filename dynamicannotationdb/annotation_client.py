@@ -132,7 +132,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         table_id = build_table_id(self.aligned_volume, table_name)
         metadata = self.cached_session.query(AnnoMetadata). \
-            filter(AnnoMetadata.table_name == table_id).first()
+            filter(AnnoMetadata.table_id == table_id).first()
         metadata.deleted = datetime.datetime.now()
         self.cached_session.update(metadata)
         self.commit_session()
