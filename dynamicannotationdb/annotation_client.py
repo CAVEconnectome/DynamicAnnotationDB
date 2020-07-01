@@ -113,7 +113,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                                             schema_type,
                                             description,
                                             user_id,
-                                            reference_table)
+                                            reference_table=reference_table,
+                                            flat_segmentation_source=flat_segmentation_source)
 
     def delete_table(self, table_name: str) -> bool:
         """Marks a table for deletion, which will
