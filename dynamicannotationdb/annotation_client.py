@@ -72,7 +72,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                      schema_type: str,
                      description: str,
                      user_id: str,
-                     reference_table: str = None):
+                     reference_table: str = None,
+                     flat_segmentation_source: str = None):
         """Create a new annotation table
 
         Parameters
@@ -83,15 +84,21 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         schema_type : str
             type of schema for that table
 
-        metadata_dict : dict
-             metadata to attach ::
-             
-        dict: {
-            "description": "a string with a human readable explanation of \
-                            what is in the table. Including who made it"
-            "user_id": "user_id"
-            "reference_table": "reference table name, if required by this schema"
-            }
+        description: str
+            a string with a human readable explanation of 
+            what is in the table. Including who made it
+            and any information that helps interpret the fields
+            of the annotations.
+
+        user_id: str
+            user id for this table
+
+        reference_table: str
+            reference table name, if required by this schema
+
+        flat_segmentation_source: str
+            a path to a segmentation source associated with this table
+             i.e. 'precomputed:\\gs:\\my_synapse_seg\example1'
 
         Returns
         -------
@@ -259,6 +266,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         Raises
         ------
+        TODO: make this raise an exception rather than return strings
         """
         anno_id = annotation.get('id')
         if not anno_id:

@@ -106,7 +106,8 @@ class DynamicAnnotationInterface:
                                 schema_type:str,
                                 description: str,
                                 user_id: str,
-                                reference_table: str = None):
+                                reference_table: str = None,
+                                flat_segmentation_source: str=None):
         """Create new annotation table unless already exists
 
         Parameters
@@ -117,15 +118,22 @@ class DynamicAnnotationInterface:
             name of table
         schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
-        metadata_dict : dict
-             metadata to attach ::
-             
-        dict: {
-            "description": "a string with a human readable explanation of \ 
-                        what is in the table. Including who made it"
-            "user_id": "user_id"
-            "reference_table": "reference table name, if required by this schema"
-            }
+
+         description: str
+            a string with a human readable explanation of 
+            what is in the table. Including who made it
+            and any information that helps interpret the fields
+            of the annotations.
+
+        user_id: str
+            user id for this table
+
+        reference_table: str
+            reference table name, if required by this schema
+
+        flat_segmentation_source: str
+            a path to a segmentation source associated with this table
+             i.e. 'precomputed:\\gs:\\my_synapse_seg\example1'
         """
         table_id = build_table_id(aligned_volume, table_name)
 
@@ -148,7 +156,8 @@ class DynamicAnnotationInterface:
             'schema_type': schema_type,
             'table_name': table_id,
             'valid': True,
-            'created': creation_time
+            'created': creation_time,
+            'flat_segmentation_source': flat_segmentation_source
         }
         logging.info(f"Metadata for table: {table_id} is {metadata_dict}")
         anno_metadata = AnnoMetadata(**metadata_dict)

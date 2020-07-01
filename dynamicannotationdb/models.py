@@ -12,4 +12,5 @@ class Metadata(Base):
     user_id = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
     reference_table = Column(String(100), nullable=True)
+    flat_segmentation_source = Column(String(300), nullable=True)
 
