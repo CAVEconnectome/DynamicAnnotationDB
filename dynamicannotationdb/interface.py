@@ -261,7 +261,7 @@ class DynamicAnnotationInterface:
             List of table_ids
         """
         metadata = self.cached_session.query(AnnoMetadata).all()
-        return [m.table_name for m in metadata]
+        return [m.table_id for m in metadata]
 
     def has_table(self, table_id: str) -> bool:
         """Check if a table exists
