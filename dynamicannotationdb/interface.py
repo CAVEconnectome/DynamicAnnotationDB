@@ -356,6 +356,13 @@ class DynamicAnnotationInterface:
 
         return self._map_values_to_schema(data, flat_annotation_schema), self._map_values_to_schema(data, flat_segmentation_schema)
 
+    def _get_flattened_schema(self, schema_type: str):
+        schema_type = get_schema(schema_type)
+
+        flat_annotation_schema, flat_segmentation_schema = em_models.split_annotation_schema(schema_type)
+
+        return flat_annotation_schema, flat_segmentation_schema
+
     def _map_values_to_schema(self, data, schema):
         return {key: data[key] for key, value in schema._declared_fields.items() if key in data}
 
