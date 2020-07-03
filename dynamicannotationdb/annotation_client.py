@@ -1,5 +1,7 @@
 from dynamicannotationdb.interface import DynamicAnnotationInterface
-from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, NoAnnotationsFoundWithID
+from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, \
+                                      NoAnnotationsFoundWithID, \
+                                      UpdateAnnotationError
 from dynamicannotationdb.models import Metadata as AnnoMetadata
 from dynamicannotationdb.key_utils import get_table_name_from_table_id, build_table_id
 from emannotationschemas import get_flat_schema
@@ -222,18 +224,17 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         List[dict]
             list of returned annotations
         """
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
-
         table_id = build_table_id(self.aligned_volume, table_name)
 
         AnnotationModel = self._cached_table(table_id)
 
         annotations = self.cached_session.query(AnnotationModel). \
             filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
-
+        
+        schema_type = self.get_table_schema(self.aligned_volume, table_name)
+        anno_schema, __ = self._get_flattened_schema(schema_type)
+        schema = anno_schema(unknown=INCLUDE)
         try:
-            FlatSchema = get_flat_schema(schema_type)
-            schema = FlatSchema(unknown=INCLUDE)
             data = []
 
             for anno in annotations:
@@ -241,8 +242,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                 anno_data['created'] = str(anno_data.get('created'))
                 anno_data['deleted'] = str(anno_data.get('deleted'))
                 anno_data.pop('_sa_instance_state', None)
-                merged_data = {**anno_data}
-                data.append(merged_data)
+                data.append(anno_data)
 
             return schema.load(data, many=True)
 
@@ -289,8 +289,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             old_anno = self.cached_session.query(AnnotationModel).filter(AnnotationModel.id == anno_id).one()
 
             if old_anno.superceded_id:
-                return f"Annotation with id {anno_id} has already been superseded by {old_anno.superceded_id},\
-                        update {old_anno.superceded_id} instead"
+                raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
 
             self.cached_session.add(new_data)
             self.cached_session.flush()
