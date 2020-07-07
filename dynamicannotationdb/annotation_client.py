@@ -329,6 +329,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             deleted_time = datetime.datetime.now()
             for annotation in annotations:
                 annotation.deleted = deleted_time
+                annotation.valid = False
             self.commit_session()
         else:
             return None
