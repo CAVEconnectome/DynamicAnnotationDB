@@ -1,12 +1,13 @@
 from dynamicannotationdb.interface import DynamicAnnotationInterface
-from dynamicannotationdb.errors import AnnotationInsertLimitExceeded
+from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, UpdateAnnotationError
 from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.flatten import flatten_dict
 from emannotationschemas import models as em_models
-from dynamicannotationdb.key_utils import build_table_id, get_table_name_from_table_id
+from dynamicannotationdb.key_utils import build_table_id, get_table_name_from_table_id, build_segmentation_table_id
 from marshmallow import INCLUDE, EXCLUDE
 from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError, IntegrityError
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.orm.exc import NoResultFound
 from typing import List
 import logging
 import datetime
@@ -69,8 +70,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
     def drop_table(self, table_name: str) -> bool:
         return self._drop_table(self.aligned_volume, table_name)
 
-    def get_linked_annotations(self, aligned_volume: str,
-                                     table_name: str,
+    def get_linked_annotations(self, table_name: str,
                                      pcg_table_name: str,
                                      pcg_version: int,
                                      annotation_ids: List[int]) -> dict:
@@ -91,10 +91,11 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         
         schema_type = self.get_table_schema(self.aligned_volume, table_name)
         
-        table_id = build_table_id(aligned_volume, table_name)
+        table_id = build_table_id(self.aligned_volume, table_name)
+        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
 
         AnnotationModel = self._cached_table(table_id)
-        SegmentationModel = self._cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
+        SegmentationModel = self._cached_table(seg_table_id)
         
         annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
                                           join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
@@ -117,12 +118,9 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         return schema.load(data, many=True)
             
-
-    def insert_linked_annotations(self, aligned_volume: str,
-                                        table_name:str,
+    def insert_linked_annotations(self, table_name:str,
                                         pcg_table_name: str,
                                         pcg_version: int,
-                                        schema_type: str,
                                         annotations: List[dict]):
         """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
         using a bulk insert script.
@@ -142,13 +140,17 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         if len(annotations) > insertion_limit:
             raise AnnotationInsertLimitExceeded(len(annotations), insertion_limit)
+        
+        schema_type = self.get_table_schema(self.aligned_volume, table_name)
 
-        table_id = build_table_id(aligned_volume, table_name)
+        table_id = build_table_id(self.aligned_volume, table_name)
+        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
+
         formatted_anno_data = []
         formatted_seg_data = []
         
         AnnotationModel = self._cached_table(table_id)
-        SegmentationModel = self._cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
+        SegmentationModel = self._cached_table(seg_table_id)
         
         for annotation in annotations:
             
@@ -171,15 +173,12 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
                 for segmentation_data, anno in zip(formatted_seg_data, annos)]
         self.cached_session.add_all(segs)
         self.commit_session()
+        return True
 
-
-    def update_linked_annotations(self, aligned_volume: str,
-                                        table_name: str,
+    def update_linked_annotations(self, table_name: str,
                                         pcg_table_name: str,
                                         pcg_version: int,
-                                        schema_type: str,
-                                        anno_id: int,
-                                        new_annotations: dict):
+                                        annotation: dict):
         """Updates an annotation by inserting a new row. The original annotation
         will refer to the new row with a superceded_id. Does not update inplace.
 
@@ -189,30 +188,80 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             Table name formatted in the form: "{aligned_volume}_{table_name}"
         schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
-        anno_id : int
-            Primary key ID to select annotation for updating.
-        new_annotations : [type], optional
+
+        new_annotations : dict, annotation to update by ID
         """
-        table_id = build_table_id(aligned_volume, table_name)
+        anno_id = annotation.get('id')
+        if not anno_id:
+            return "Annotation requires an 'id' to update targeted row"
+
+        table_id = build_table_id(self.aligned_volume, table_name)
+        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
+
+        schema_type = self.get_table_schema(self.aligned_volume, table_name)
 
         AnnotationModel = self._cached_table(table_id)
-        SegmentationModel = self._cached_table(f"{table_id}_{pcg_table_name}_v{pcg_version}")
+        SegmentationModel = self._cached_table(seg_table_id)
         
-        new_annotation, __ = self._get_flattened_schema_data(schema_type, new_annotations)
+        new_annotation, __ = self._get_flattened_schema_data(schema_type, annotation)
         
         new_annotation['created'] = datetime.datetime.now()
         new_annotation['valid'] = True
 
         new_data = AnnotationModel(**new_annotation)
-      
-        old_anno, old_seg = self.cached_session.query(AnnotationModel, SegmentationModel).filter(AnnotationModel.id==anno_id).one()
+        try:
+            old_anno, old_seg = self.cached_session.query(AnnotationModel, SegmentationModel).filter(AnnotationModel.id==anno_id).one()
         
-        self.cached_session.add(new_data)
-        self.cached_session.flush()
+            if old_anno.superceded_id:
+                raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
+            
+            self.cached_session.add(new_data)
+            self.cached_session.flush()
+            
+            old_anno.superceded_id = new_data.id
+            old_anno.valid = False
+            
+            old_seg.annotation_id = new_data.id
+            
+            self.commit_session()
+            return f"id {anno_id} updated"
+        except NoResultFound as e:
+            return f"No result found for {anno_id}. Error: {e}"
+
+    def delete_linked_annotation(self, table_name: str,
+                                       pcg_table_name: str,
+                                       pcg_version: int,
+                                       annotation_ids: List[int]):
+        """Delete annotations by ids
+
+        Parameters
+        ----------
+        table_name : str
+            name of table to delete from
+        annotation_ids : List[int]
+            list of ids to delete
+
+        Returns
+        -------
+
+        Raises
+        ------
+        """
+        table_id = build_table_id(self.aligned_volume, table_name)
+        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
+        AnnotationModel = self._cached_table(table_id)
+        SegmentationModel = self._cached_table(seg_table_id)
         
-        old_anno.superceded_id = new_data.id
-        old_anno.valid = False
-        
-        old_seg.annotation_id = new_data.id
-        
-        self.commit_session()
+        annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
+                                          join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
+                                          filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
+
+        if annotations:
+            deleted_time = datetime.datetime.now()
+            for annotation in annotations:
+                annotation.deleted = deleted_time
+                annotation.valid = False
+            self.commit_session()
+        else:
+            return None
+        return True
