@@ -1,5 +1,5 @@
 from dynamicannotationdb.interface import DynamicAnnotationInterface
-from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, UpdateAnnotationError
+from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, UpdateAnnotationError, IdsAlreadyExists
 from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.flatten import flatten_dict
 from emannotationschemas import models as em_models
@@ -93,7 +93,6 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         
         table_id = build_table_id(self.aligned_volume, table_name)
         seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
-
         AnnotationModel = self._cached_table(table_id)
         SegmentationModel = self._cached_table(seg_table_id)
         
@@ -117,7 +116,60 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             data.append(merged_data)
 
         return schema.load(data, many=True)
-            
+
+    def insert_linked_segmentation(self, table_name:str,
+                                         pcg_table_name: str,
+                                         pcg_version: int,
+                                         segmentations: List[dict]):
+        """Insert segmentations by linking to annotation ids. Limited to 10,000 segmentations. 
+        If more consider using a bulk insert script.
+
+        Parameters
+        ----------
+        aligned_volume : str
+            Table name formatted in the form: "{aligned_volume}_{table_name}"
+        table_name: str
+        schema_type : str
+            Type of schema to use, must be a valid type from EMAnnotationSchemas
+        segmentations : List[dict]
+            List of dictionaries of single segmentation data. 
+        """
+        insertion_limit = 10_000
+
+        if len(segmentations) > insertion_limit:
+            raise AnnotationInsertLimitExceeded(len(segmentations), insertion_limit)
+                
+        schema_type = self.get_table_schema(self.aligned_volume, table_name)
+        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name, pcg_version)
+
+        SegmentationModel = self._cached_table(seg_table_id)
+        formatted_seg_data = []
+
+        _, segmentation_schema = self._get_flattened_schema(schema_type)
+
+        for segmentation in segmentations:
+            segmentation_data = flatten_dict(segmentation)
+            flat_data = self._map_values_to_schema(segmentation_data, segmentation_schema)
+            flat_data['annotation_id'] = segmentation['annotation_id']
+
+            formatted_seg_data.append(flat_data)
+
+        segs = [SegmentationModel(**segmentation_data)
+                        for segmentation_data in formatted_seg_data]
+
+        ids = [data['annotation_id'] for data in formatted_seg_data]
+        q = self.cached_session.query(SegmentationModel).filter(SegmentationModel.annotation_id.in_([id for id in ids]))
+        ids_exist = self.cached_session.query(q.exists()).scalar() 
+        
+        if not ids_exist:
+            self.cached_session.add_all(segs)
+            self.commit_session()
+            return True
+        else:
+            raise IdsAlreadyExists(f"Annotation IDs {ids} already linked in database ")
+
+
+
     def insert_linked_annotations(self, table_name:str,
                                         pcg_table_name: str,
                                         pcg_version: int,
