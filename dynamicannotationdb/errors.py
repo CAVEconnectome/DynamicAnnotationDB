@@ -4,6 +4,10 @@ class TableNameNotFound(KeyError):
 class TableAlreadyExists(KeyError):
     """ Table name already exists in the Metadata table """
 
+class IdsAlreadyExists(KeyError):
+    """ Annotation IDs already exists in the segmentation table """
+
+
 class BadRequest(Exception):
     pass
 
