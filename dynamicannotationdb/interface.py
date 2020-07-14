@@ -218,8 +218,12 @@ class DynamicAnnotationInterface:
         table_id = build_table_id(aligned_volume, table_name)
         metadata = self.cached_session.query(AnnoMetadata).\
                         filter(AnnoMetadata.table_id==table_id).first()
-        metadata.__dict__.pop('_sa_instance_state')
-        return metadata.__dict__
+        try:
+            metadata.__dict__.pop('_sa_instance_state')
+            return metadata.__dict__
+        except Exception as e:
+            raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
+        
 
     def get_table_schema(self, aligned_volume: str, table_name: str):
         table_metadata = self.get_table_metadata(aligned_volume, table_name)
@@ -400,8 +404,11 @@ class DynamicAnnotationInterface:
 
         try:
             self._cached_tables[table_id] = self._get_model_from_table_id(table_id)
+            print(self._cached_tables[table_id])
             return True
         except KeyError as key_error:
             if table_id in self._get_existing_table_ids():
                 logging.error(f"Could not load table: {key_error}")
             return False
+
+
