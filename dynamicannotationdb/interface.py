@@ -30,19 +30,15 @@ class DynamicAnnotationInterface:
         create_metadata : bool, optional
             Creates additional columns on new tables for CRUD operations, by default True
         """
-        self.sql_uri = sql_uri
-        self.engine = create_engine(self.sql_uri,
-                                    pool_recycle=3600,
-                                    pool_size=20,
-                                    max_overflow=50)
-
-        self.base = em_models.Base
+        engine = create_engine(sql_uri,
+                               pool_recycle=3600,
+                               pool_size=20,
+                               max_overflow=50)
+        Base = em_models.Base
+        Base.metadata.create_all(engine)
         self.mapped_base = None
-
-        self.base.metadata.create_all(self.engine)
-
-        self.base.metadata.reflect(bind=self.engine)
-
+        self.base = Base
+        self.engine = engine
         self.session = sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
 
         self.insp = inspect(self.engine)
@@ -145,8 +141,7 @@ class DynamicAnnotationInterface:
                                                 schema_type,
                                                 with_crud_columns=True)
 
-        self.base.metadata.create_all(bind=self.engine)
-
+        self.base.metadata.tables[model.__name__].create(bind=self.engine)
         creation_time = datetime.datetime.now()
         
         metadata_dict = {
