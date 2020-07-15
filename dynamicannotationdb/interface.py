@@ -242,14 +242,15 @@ class DynamicAnnotationInterface:
             column names and types
         """
         try:
+            model_columns = []
             db_columns = self.insp.get_columns(table_id)
-        except TableNameNotFound as error:
-            logging.error(f"Error: {error}. No table name exists with name {table_id}.")
-        model_columns = []
-        for column in db_columns:
-            model_columns.append(tuple([column['name'],
-                                        column['type']]))
-        return model_columns
+            for column in db_columns:
+                model_columns.append(tuple([column['name'],
+                                            column['type']]))
+            return model_columns
+        except Exception as e:
+            raise TableNameNotFound(f"Error: {e}. No table name exists with name {table_id}.")
+
 
     def _get_existing_table_ids(self):
         """ Collects table_ids keys of existing tables
