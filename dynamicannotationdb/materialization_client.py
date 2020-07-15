@@ -168,8 +168,6 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         else:
             raise IdsAlreadyExists(f"Annotation IDs {ids} already linked in database ")
 
-
-
     def insert_linked_annotations(self, table_name:str,
                                         pcg_table_name: str,
                                         pcg_version: int,
@@ -262,21 +260,21 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         new_data = AnnotationModel(**new_annotation)
         try:
-            old_anno, old_seg = self.cached_session.query(AnnotationModel, SegmentationModel).filter(AnnotationModel.id==anno_id).one()
-        
-            if old_anno.superceded_id:
-                raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
-            
-            self.cached_session.add(new_data)
-            self.cached_session.flush()
-            
-            old_anno.superceded_id = new_data.id
-            old_anno.valid = False
-            
-            old_seg.annotation_id = new_data.id
-            
-            self.commit_session()
-            return f"id {anno_id} updated"
+            data = self.cached_session.query(AnnotationModel, SegmentationModel).filter(AnnotationModel.id==anno_id).filter(SegmentationModel.annotation_id==anno_id).all()
+            for old_anno, old_seg in data:
+                if old_anno.superceded_id:
+                    raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
+                
+                self.cached_session.add(new_data)
+                self.cached_session.flush()
+                
+                old_anno.superceded_id = new_data.id
+                old_anno.valid = False
+                
+                old_seg.annotation_id = new_data.id
+                
+                self.commit_session()
+                return f"id {anno_id} updated"
         except NoResultFound as e:
             return f"No result found for {anno_id}. Error: {e}"
 
@@ -304,7 +302,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         AnnotationModel = self._cached_table(table_id)
         SegmentationModel = self._cached_table(seg_table_id)
         
-        annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
+        annotations = self.cached_session.query(AnnotationModel).\
                                           join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
                                           filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
 
