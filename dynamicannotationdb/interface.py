@@ -197,12 +197,14 @@ class DynamicAnnotationInterface:
                                                             annotation_table_name,
                                                             pcg_table_name,
                                                             pcg_version)
-
+        
         if annotation_table_id in self._get_existing_table_ids():
+            if annotation_table_id not in self.base.metadata:
+                anno_table_model = self.get_table_sql_metadata(annotation_table_id)
             model = em_models.make_segmentation_model(annotation_table_id,
-                                                    schema_type,
-                                                    pcg_table_name,
-                                                    pcg_version)
+                                                      schema_type,
+                                                      pcg_table_name,
+                                                      pcg_version)
 
             self.base.metadata.tables[model.__name__].create(bind=self.engine)
             self.commit_session()
