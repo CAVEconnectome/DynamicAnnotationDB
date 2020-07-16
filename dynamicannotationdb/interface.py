@@ -1,9 +1,10 @@
-from sqlalchemy import create_engine, inspect, func
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import create_engine, inspect, func, MetaData
+from sqlalchemy.orm import sessionmaker, Session, scoped_session
 from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError, IntegrityError
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.pool import NullPool
 from marshmallow import EXCLUDE
 from emannotationschemas import get_schema, get_flat_schema
@@ -30,15 +31,18 @@ class DynamicAnnotationInterface:
         create_metadata : bool, optional
             Creates additional columns on new tables for CRUD operations, by default True
         """
-        engine = create_engine(sql_uri,
+        self.sql_uri = sql_uri
+        self.engine = create_engine(sql_uri,
                                pool_recycle=3600,
                                pool_size=20,
                                max_overflow=50)
-        Base = em_models.Base
-        Base.metadata.create_all(engine)
+        self.base = em_models.Base
+        self.base.metadata.bind = self.engine
+
+        if not self.engine.dialect.has_table(self.engine, AnnoMetadata.__tablename__): 
+            self.base.metadata.tables[AnnoMetadata.__tablename__].create(bind=self.engine)
+
         self.mapped_base = None
-        self.base = Base
-        self.engine = engine
         self.session = sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
 
         self.insp = inspect(self.engine)
