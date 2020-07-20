@@ -11,7 +11,7 @@ from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.flatten import flatten_dict
 from emannotationschemas import models as em_models
 from dynamicannotationdb.key_utils import build_table_id, build_segmentation_table_id
-from dynamicannotationdb.models import Metadata as AnnoMetadata
+from dynamicannotationdb.models import AnnoMetadata, SegmentationMetadata
 from dynamicannotationdb.errors import TableNameNotFound, TableAlreadyExists
 from typing import List
 import logging
@@ -39,8 +39,14 @@ class DynamicAnnotationInterface:
         self.base = em_models.Base
         self.base.metadata.bind = self.engine
 
+        table_objects = [
+            AnnoMetadata.__tablename__,
+            SegmentationMetadata.__tablename__,
+        ]
+
         if not self.engine.dialect.has_table(self.engine, AnnoMetadata.__tablename__): 
-            self.base.metadata.tables[AnnoMetadata.__tablename__].create(bind=self.engine)
+            for table in table_objects:
+                self.base.metadata.tables[table].create(bind=self.engine)
 
         self.mapped_base = None
         self.session = sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
@@ -200,6 +206,7 @@ class DynamicAnnotationInterface:
         
         if annotation_table_id in self._get_existing_table_ids():
             if annotation_table_id not in self.base.metadata:
+                # TODO once emannotationschemas is refactored pass table model instead of table_id
                 anno_table_model = self.get_table_sql_metadata(annotation_table_id)
             model = em_models.make_segmentation_model(annotation_table_id,
                                                       schema_type,
@@ -207,8 +214,19 @@ class DynamicAnnotationInterface:
                                                       pcg_version)
 
             self.base.metadata.tables[model.__name__].create(bind=self.engine)
-            self.commit_session()
             creation_time = datetime.datetime.now()
+
+            metadata_dict = {
+                'annotation_table': annotation_table_id,
+                'schema_type': schema_type,
+                'table_id': segmentation_table_id,
+                'valid': True,
+                'created': creation_time,
+                'pcg_table_name': pcg_table_name
+            }
+            seg_metadata = SegmentationMetadata(**metadata_dict)
+            self.cached_session.add(seg_metadata)           
+            self.commit_session()
 
             logging.info(f"Table: {segmentation_table_id} created using {model} model at {creation_time}")
             return {"Created Succesfully": True, "Table Name": model.__name__}
