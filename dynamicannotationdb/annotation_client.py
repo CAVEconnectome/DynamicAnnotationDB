@@ -2,7 +2,7 @@ from dynamicannotationdb.interface import DynamicAnnotationInterface
 from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, \
                                       NoAnnotationsFoundWithID, \
                                       UpdateAnnotationError
-from dynamicannotationdb.models import Metadata as AnnoMetadata
+from dynamicannotationdb.models import AnnoMetadata
 from dynamicannotationdb.key_utils import get_table_name_from_table_id, build_table_id
 from emannotationschemas import get_flat_schema
 from marshmallow import INCLUDE
