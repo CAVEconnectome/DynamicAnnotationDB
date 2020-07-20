@@ -275,6 +275,8 @@ class DynamicAnnotationInterface:
         except Exception as e:
             raise TableNameNotFound(f"Error: {e}. No table name exists with name {table_id}.")
 
+    def _get_all_tables(self):
+        return self.cached_session.query(AnnoMetadata).all()
 
     def _get_existing_table_ids(self):
         """ Collects table_ids keys of existing tables
