@@ -1,3 +1,4 @@
+from dynamicannotationdb.models import SegmentationMetadata
 from dynamicannotationdb.interface import DynamicAnnotationInterface
 from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, UpdateAnnotationError, IdsAlreadyExists
 from emannotationschemas import get_schema, get_flat_schema
@@ -69,6 +70,16 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
     def drop_table(self, table_name: str) -> bool:
         return self._drop_table(self.aligned_volume, table_name)
+
+    def get_linked_tables(self, table_name: str, pcg_table_name: str) -> List:
+        table_id = build_table_id(self.aligned_volume, table_name)
+        linked_tables = self.cached_session.query(SegmentationMetadata).\
+                        filter(SegmentationMetadata.annotation_table==table_id).\
+                        filter(SegmentationMetadata.pcg_table_name==pcg_table_name).all()
+        try:
+            return linked_tables
+        except Exception as e:
+            raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")        
 
     def get_linked_annotations(self, table_name: str,
                                      pcg_table_name: str,
@@ -246,7 +257,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             return "Annotation requires an 'id' to update targeted row"
 
         table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
+        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name, pcg_version)
 
         schema_type = self.get_table_schema(self.aligned_volume, table_name)
 
