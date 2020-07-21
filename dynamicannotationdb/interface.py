@@ -174,8 +174,7 @@ class DynamicAnnotationInterface:
     def create_segmentation_table(self, aligned_volume: str,
                                         annotation_table_name: str,
                                         schema_type:str,
-                                        pcg_table_name: str,
-                                        pcg_version: int):
+                                        pcg_table_name: str):
         """Create new segmentation table linked to an annotation table
          unless it already exists. 
 
@@ -189,8 +188,6 @@ class DynamicAnnotationInterface:
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         pcg_table_name : str
             name of pychunked graph segmentation to use
-        pcg_version : int
-            segmentation version
 
         Returns
         -------
@@ -201,8 +198,7 @@ class DynamicAnnotationInterface:
 
         segmentation_table_id = build_segmentation_table_id(aligned_volume,
                                                             annotation_table_name,
-                                                            pcg_table_name,
-                                                            pcg_version)
+                                                            pcg_table_name)
         
         if annotation_table_id in self._get_existing_table_ids():
             if annotation_table_id not in self.base.metadata:
@@ -210,8 +206,7 @@ class DynamicAnnotationInterface:
                 anno_table_model = self.get_table_sql_metadata(annotation_table_id)
             model = em_models.make_segmentation_model(annotation_table_id,
                                                       schema_type,
-                                                      pcg_table_name,
-                                                      pcg_version)
+                                                      pcg_table_name)
 
             self.base.metadata.tables[model.__name__].create(bind=self.engine)
             creation_time = datetime.datetime.now()

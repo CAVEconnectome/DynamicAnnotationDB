@@ -58,15 +58,13 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         ]
 
     def create_and_attach_seg_table(self, table_name: str,
-                                          pcg_table_name: str,
-                                          pcg_version: int = 0):
+                                          pcg_table_name: str):
                 
         schema_type = self.get_table_schema(self.aligned_volume, table_name)
         return self.create_segmentation_table(self.aligned_volume,
                                               table_name,
                                               schema_type,
-                                              pcg_table_name,
-                                              pcg_version)
+                                              pcg_table_name)
 
     def drop_table(self, table_name: str) -> bool:
         return self._drop_table(self.aligned_volume, table_name)
