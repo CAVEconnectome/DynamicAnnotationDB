@@ -81,7 +81,6 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
     def get_linked_annotations(self, table_name: str,
                                      pcg_table_name: str,
-                                     pcg_version: int,
                                      annotation_ids: List[int]) -> dict:
         """ Get list of annotations from database by id.
 
@@ -101,7 +100,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         schema_type = self.get_table_schema(self.aligned_volume, table_name)
         
         table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
+        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name)
         AnnotationModel = self._cached_table(table_id)
         SegmentationModel = self._cached_table(seg_table_id)
         
@@ -128,7 +127,6 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
     def insert_linked_segmentation(self, table_name:str,
                                          pcg_table_name: str,
-                                         pcg_version: int,
                                          segmentations: List[dict]):
         """Insert segmentations by linking to annotation ids. Limited to 10,000 segmentations. 
         If more consider using a bulk insert script.
@@ -149,7 +147,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             raise AnnotationInsertLimitExceeded(len(segmentations), insertion_limit)
                 
         schema_type = self.get_table_schema(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name, pcg_version)
+        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name)
 
         SegmentationModel = self._cached_table(seg_table_id)
         formatted_seg_data = []
@@ -179,7 +177,6 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
     def insert_linked_annotations(self, table_name:str,
                                         pcg_table_name: str,
-                                        pcg_version: int,
                                         annotations: List[dict]):
         """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
         using a bulk insert script.
@@ -203,7 +200,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         schema_type = self.get_table_schema(self.aligned_volume, table_name)
 
         table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
+        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name,)
 
         formatted_anno_data = []
         formatted_seg_data = []
@@ -236,7 +233,6 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
     def update_linked_annotations(self, table_name: str,
                                         pcg_table_name: str,
-                                        pcg_version: int,
                                         annotation: dict):
         """Updates an annotation by inserting a new row. The original annotation
         will refer to the new row with a superceded_id. Does not update inplace.
@@ -255,7 +251,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             return "Annotation requires an 'id' to update targeted row"
 
         table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name, pcg_version)
+        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name)
 
         schema_type = self.get_table_schema(self.aligned_volume, table_name)
 
@@ -289,7 +285,6 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
     def delete_linked_annotation(self, table_name: str,
                                        pcg_table_name: str,
-                                       pcg_version: int,
                                        annotation_ids: List[int]):
         """Delete annotations by ids
 
@@ -307,7 +302,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         ------
         """
         table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name, pcg_version )
+        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name)
         AnnotationModel = self._cached_table(table_id)
         SegmentationModel = self._cached_table(seg_table_id)
         
