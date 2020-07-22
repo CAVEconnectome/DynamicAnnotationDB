@@ -41,15 +41,13 @@ def test_create_segmentation_table():
     SQL_URI = environ["SQL_URI"]
     ALIGNED_VOLUME = environ["ALIGNED_VOLUME"]
     pcg_table_name = 'test_pcg_table'
-    pcg_version = 1
     interface = DynamicAnnotationInterface(SQL_URI)
     seg_table = interface.create_segmentation_table(ALIGNED_VOLUME,
                                                     TABLE_NAME,
                                                     SCHEMA_TYPE,
-                                                    pcg_table_name,
-                                                    pcg_version)
+                                                    pcg_table_name)
 
-    assert seg_table['Table Name'] == "annov1__test_volume__synapse_test__test_pcg_table__v1"
+    assert seg_table['Table Name'] == "annov1__test_volume__synapse_test__test_pcg_table"
 
 
 def test_get_table_metadata():
