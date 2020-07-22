@@ -19,8 +19,7 @@ def build_table_id(aligned_volume: str, table_name: str) -> str:
 
 def build_segmentation_table_id(aligned_volume: str, 
                                 annotation_table_name: str, 
-                                pcg_table_name: str,
-                                version: int) -> str:
+                                pcg_table_name: str) -> str:
     """Create a table id that combines annotation table and appends 
     segmentation table name and version
 
@@ -32,8 +31,6 @@ def build_segmentation_table_id(aligned_volume: str,
         exiting annotation table name
     pcg_table_name : str
         name of pychunkedgraph table
-    version : int
-        version of pychunkgraph segmentation
 
     Returns
     -------
