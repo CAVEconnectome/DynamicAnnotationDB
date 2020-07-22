@@ -86,9 +86,11 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         Parameters
         ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        anno_id : int
+        table_name : str
+            name of annotation table
+        pcg_table_name: str
+            name of chunked graph reference table
+        annotation_ids : int
             annotation id 
 
         Returns
@@ -133,11 +135,10 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         Parameters
         ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        table_name: str
-        schema_type : str
-            Type of schema to use, must be a valid type from EMAnnotationSchemas
+        table_name : str
+            name of annotation table
+        pcg_table_name: str
+            name of chunked graph reference table
         segmentations : List[dict]
             List of dictionaries of single segmentation data. 
         """
@@ -183,14 +184,12 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         Parameters
         ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        table_name: str
-        schema_type : str
-            Type of schema to use, must be a valid type from EMAnnotationSchemas
+        table_name : str
+            name of annotation table
+        pcg_table_name: str
+            name of chunked graph reference table
         annotations : dict
-            Dictionary of single annotation data. Must be flat dict unless structure_data flag is 
-            set to True.
+            Dictionary of single annotation data. 
         """
         insertion_limit = 10_000
 
@@ -239,12 +238,11 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         Parameters
         ----------
-        aligned_volume : str
-            Table name formatted in the form: "{aligned_volume}_{table_name}"
-        schema_type : str
-            Type of schema to use, must be a valid type from EMAnnotationSchemas
-
-        new_annotations : dict, annotation to update by ID
+        table_name : str
+            name of annotation table
+        pcg_table_name: str
+            name of chunked graph reference table
+        annotation : dict, annotation to update by ID
         """
         anno_id = annotation.get('id')
         if not anno_id:
@@ -286,12 +284,14 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
     def delete_linked_annotation(self, table_name: str,
                                        pcg_table_name: str,
                                        annotation_ids: List[int]):
-        """Delete annotations by ids
+        """Mark annotations by for deletion by list of ids. 
 
         Parameters
         ----------
         table_name : str
-            name of table to delete from
+            name of annotation table
+        pcg_table_name: str
+            name of chunked graph reference table
         annotation_ids : List[int]
             list of ids to delete
 
@@ -302,7 +302,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         ------
         """
         table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name)
+        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name)
         AnnotationModel = self._cached_table(table_id)
         SegmentationModel = self._cached_table(seg_table_id)
         
