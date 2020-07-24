@@ -238,7 +238,6 @@ class DynamicAnnotationInterface:
         except Exception as e:
             raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
         
-
     def get_table_schema(self, aligned_volume: str, table_name: str):
         table_metadata = self.get_table_metadata(aligned_volume, table_name)
         return table_metadata['schema_type']
@@ -280,6 +279,18 @@ class DynamicAnnotationInterface:
         -------
         list
             List of table_ids
+        """
+        metadata = self.cached_session.query(AnnoMetadata).all()
+        return [m.table_id for m in metadata]
+
+    def get_existing_segmentation_table_ids(self):
+        """ Collects table_ids keys of existing segmentation tables
+        contained in an aligned volume database. Used for materialization.
+
+        Returns
+        -------
+        list
+            List of segmentation table_ids
         """
         metadata = self.cached_session.query(AnnoMetadata).all()
         return [m.table_id for m in metadata]
@@ -355,8 +366,8 @@ class DynamicAnnotationInterface:
         table_id = build_table_id(aligned_volume, table_name)
         return self._get_model_from_table_id(table_id)
 
-    def get_segmentation_model(self, aligned_volume, table_name, pcg_table_name, version):
-        table_id = build_segmentation_table_id(aligned_volume, table_name, pcg_table_name, version)
+    def get_segmentation_model(self, aligned_volume, table_name, pcg_table_name):
+        table_id = build_segmentation_table_id(aligned_volume, table_name, pcg_table_name)
         return self._get_model_from_table_id(table_id)
 
     def _get_model_from_table_id(self, table_id: str) -> DeclarativeMeta:
