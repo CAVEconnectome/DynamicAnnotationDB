@@ -292,7 +292,7 @@ class DynamicAnnotationInterface:
         list
             List of segmentation table_ids
         """
-        metadata = self.cached_session.query(AnnoMetadata).all()
+        metadata = self.cached_session.query(SegmentationMetadata).all()
         return [m.table_id for m in metadata]
 
     def has_table(self, table_id: str) -> bool:
