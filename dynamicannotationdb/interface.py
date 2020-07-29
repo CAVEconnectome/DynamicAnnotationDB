@@ -49,7 +49,7 @@ class DynamicAnnotationInterface:
                 self.base.metadata.tables[table].create(bind=self.engine)
 
         self.mapped_base = None
-        self.session = sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
+        self.session = scoped_session(sessionmaker(bind=self.engine, autocommit=False, autoflush=False))
 
         self.insp = inspect(self.engine)
 
@@ -91,7 +91,7 @@ class DynamicAnnotationInterface:
 
 
     @property
-    def cached_session(self)->Session:
+    def cached_session(self) -> Session:
         if self._cached_session is None:
             self._cached_session = self.session()
         return self._cached_session
