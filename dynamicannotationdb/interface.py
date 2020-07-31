@@ -432,7 +432,6 @@ class DynamicAnnotationInterface:
 
         try:
             self._cached_tables[table_id] = self._get_model_from_table_id(table_id)
-            print(self._cached_tables[table_id])
             return True
         except KeyError as key_error:
             if table_id in self._get_existing_table_ids():
