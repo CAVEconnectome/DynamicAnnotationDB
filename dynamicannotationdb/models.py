@@ -25,4 +25,5 @@ class SegmentationMetadata(Base):
     deleted = Column(DateTime, nullable=True)
     segmentation_source = Column(String(255), nullable=True)
     pcg_table_name = Column(String(255), nullable=False)
+    last_updated = Column(DateTime, nullable=True)
     annotation_table = Column(String(100), ForeignKey('annotation_table_metadata.table_id'))
