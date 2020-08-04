@@ -237,7 +237,7 @@ class DynamicAnnotationInterface:
             return metadata.__dict__
         except Exception as e:
             raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
-        
+
     def get_table_schema(self, aligned_volume: str, table_name: str):
         table_metadata = self.get_table_metadata(aligned_volume, table_name)
         return table_metadata['schema_type']
