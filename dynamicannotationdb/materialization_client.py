@@ -70,11 +70,11 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         return self._drop_table(self.aligned_volume, table_name)
 
     def get_linked_tables(self, table_name: str, pcg_table_name: str) -> List:
-        table_id = build_table_id(self.aligned_volume, table_name)
-        linked_tables = self.cached_session.query(SegmentationMetadata).\
-                        filter(SegmentationMetadata.annotation_table==table_id).\
-                        filter(SegmentationMetadata.pcg_table_name==pcg_table_name).all()
         try:
+            table_id = build_table_id(self.aligned_volume, table_name)
+            linked_tables = self.cached_session.query(SegmentationMetadata).\
+                            filter(SegmentationMetadata.annotation_table==table_id).\
+                            filter(SegmentationMetadata.pcg_table_name==pcg_table_name).all()    
             return linked_tables
         except Exception as e:
             raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")        
