@@ -238,6 +238,17 @@ class DynamicAnnotationInterface:
         except Exception as e:
             raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
 
+    def get_segmentation_table_metadata(self, aligned_volume: str, table_name: str, pcg_table_name: str):
+        table_id = build_segmentation_table_id(aligned_volume, table_name, pcg_table_name)
+        metadata = self.cached_session.query(SegmentationMetadata).\
+                        filter(SegmentationMetadata.table_id==table_id).first()
+        try:
+            metadata.__dict__.pop('_sa_instance_state')
+            return metadata.__dict__
+        except Exception as e:
+            raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
+
+
     def get_table_schema(self, aligned_volume: str, table_name: str):
         table_metadata = self.get_table_metadata(aligned_volume, table_name)
         return table_metadata['schema_type']
