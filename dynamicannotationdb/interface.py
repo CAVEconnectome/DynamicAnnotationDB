@@ -48,7 +48,9 @@ class DynamicAnnotationInterface:
             for table in table_objects:
                 self.base.metadata.tables[table].create(bind=self.engine)
 
-        self.mapped_base = None
+        self.mapped_base = automap_base()
+        self.mapped_base.prepare(self.engine, reflect=True)
+        
         self.session = scoped_session(sessionmaker(bind=self.engine, autocommit=False, autoflush=False))
 
         self.insp = inspect(self.engine)
