@@ -43,9 +43,8 @@ class DynamicAnnotationInterface:
             AnnoMetadata.__tablename__,
             SegmentationMetadata.__tablename__,
         ]
-
-        if not self.engine.dialect.has_table(self.engine, AnnoMetadata.__tablename__): 
-            for table in table_objects:
+        for table in table_objects:
+            if not self.engine.dialect.has_table(self.engine, table): 
                 self.base.metadata.tables[table].create(bind=self.engine)
 
         self.mapped_base = automap_base()
