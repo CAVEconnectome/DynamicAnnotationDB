@@ -345,6 +345,10 @@ class DynamicAnnotationInterface:
         model = self._cached_table(table_id)
         return self.cached_session.query(func.count(model.id)).scalar()
 
+    def get_max_id_value(self, table_id: str) -> int:
+        model = self._cached_table(table_id)
+        return self.cached_session.query(func.max(model.id)).scalar()
+
     def get_annotation_table_size(self, aligned_volume: str, table_name: str) -> int:
         """Get the number of annotations in a table
 
