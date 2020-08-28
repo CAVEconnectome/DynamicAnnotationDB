@@ -295,6 +295,10 @@ class DynamicAnnotationInterface:
         metadata = self.cached_session.query(AnnoMetadata).all()
         return [m.table_id for m in metadata]
 
+    def get_valid_table_ids(self):
+        metadata = self.cached_session.query(AnnoMetadata).all()
+        return [m.table_id for m in metadata if m.valid==True]
+
     def get_existing_segmentation_table_ids(self):
         """ Collects table_ids keys of existing segmentation tables
         contained in an aligned volume database. Used for materialization.
