@@ -4,7 +4,7 @@ from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, UpdateAnno
 from emannotationschemas import get_schema, get_flat_schema
 from emannotationschemas.flatten import flatten_dict
 from emannotationschemas import models as em_models
-from dynamicannotationdb.key_utils import build_table_id, get_table_name_from_table_id, build_segmentation_table_id
+from dynamicannotationdb.key_utils import build_segmentation_table_name
 from marshmallow import INCLUDE, EXCLUDE
 from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError, IntegrityError
 from sqlalchemy.engine.url import make_url
@@ -32,48 +32,22 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         self._table = self._cached_table(table_name)
         return self._table
 
-    def _get_existing_table_ids_by_name(self) -> List[str]:
-        """Get the table names of table that exist
-
-        Returns
-        -------
-        List[str]
-            list of table names that exist
-        """
-        table_ids = self._get_existing_table_ids()
-        table_names = [get_table_name_from_table_id(tid) for tid in table_ids]
-        return table_names
-
-    def _get_existing_table_ids_metadata(self) -> List[dict]:
-        """Get all the metadata for all tables
-
-        Returns
-        -------
-        List[dict]
-            all table metadata that exist
-        """
-        return [
-            self.get_table_metadata(self.aligned_volume, table_name)
-            for table_name in self._get_existing_table_ids()
-        ]
 
     def create_and_attach_seg_table(self, table_name: str,
                                           pcg_table_name: str):
                 
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
-        return self.create_segmentation_table(self.aligned_volume,
-                                              table_name,
+        schema_type = self.get_table_schema(table_name)
+        return self.create_segmentation_table(table_name,
                                               schema_type,
                                               pcg_table_name)
 
     def drop_table(self, table_name: str) -> bool:
-        return self._drop_table(self.aligned_volume, table_name)
+        return self._drop_table(table_name)
 
     def get_linked_tables(self, table_name: str, pcg_table_name: str) -> List:
         try:
-            table_id = build_table_id(self.aligned_volume, table_name)
             linked_tables = self.cached_session.query(SegmentationMetadata).\
-                            filter(SegmentationMetadata.annotation_table==table_id).\
+                            filter(SegmentationMetadata.annotation_table==table_name).\
                             filter(SegmentationMetadata.pcg_table_name==pcg_table_name).all()    
             return linked_tables
         except Exception as e:
@@ -99,12 +73,11 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             list of annotation data dicts
         """
         
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
+        schema_type = self.get_table_schema(table_name)
         
-        table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name)
-        AnnotationModel = self._cached_table(table_id)
-        SegmentationModel = self._cached_table(seg_table_id)
+        seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
+        AnnotationModel = self._cached_table(table_name)
+        SegmentationModel = self._cached_table(seg_table_name)
         
         annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
                                           join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
@@ -147,10 +120,10 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         if len(segmentations) > insertion_limit:
             raise AnnotationInsertLimitExceeded(len(segmentations), insertion_limit)
                 
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name)
+        schema_type = self.get_table_schema(table_name)
+        seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
 
-        SegmentationModel = self._cached_table(seg_table_id)
+        SegmentationModel = self._cached_table(seg_table_name)
         formatted_seg_data = []
 
         _, segmentation_schema = self._get_flattened_schema(schema_type)
@@ -196,16 +169,15 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         if len(annotations) > insertion_limit:
             raise AnnotationInsertLimitExceeded(len(annotations), insertion_limit)
         
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
+        schema_type = self.get_table_schema(table_name)
 
-        table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume,table_name,pcg_table_name,)
+        seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
 
         formatted_anno_data = []
         formatted_seg_data = []
         
-        AnnotationModel = self._cached_table(table_id)
-        SegmentationModel = self._cached_table(seg_table_id)
+        AnnotationModel = self._cached_table(table_name)
+        SegmentationModel = self._cached_table(seg_table_name)
         
         for annotation in annotations:
             
@@ -248,13 +220,12 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         if not anno_id:
             return "Annotation requires an 'id' to update targeted row"
 
-        table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name)
+        seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
 
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
+        schema_type = self.get_table_schema(table_name)
 
-        AnnotationModel = self._cached_table(table_id)
-        SegmentationModel = self._cached_table(seg_table_id)
+        AnnotationModel = self._cached_table(table_name)
+        SegmentationModel = self._cached_table(seg_table_name)
         
         new_annotation, __ = self._get_flattened_schema_data(schema_type, annotation)
         
@@ -303,10 +274,9 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         Raises
         ------
         """
-        table_id = build_table_id(self.aligned_volume, table_name)
-        seg_table_id = build_segmentation_table_id(self.aligned_volume, table_name, pcg_table_name)
-        AnnotationModel = self._cached_table(table_id)
-        SegmentationModel = self._cached_table(seg_table_id)
+        seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
+        AnnotationModel = self._cached_table(table_name)
+        SegmentationModel = self._cached_table(seg_table_name)
         
         annotations = self.cached_session.query(AnnotationModel).\
                                           join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
