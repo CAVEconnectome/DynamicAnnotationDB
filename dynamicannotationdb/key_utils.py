@@ -17,8 +17,7 @@ def build_table_id(aligned_volume: str, table_name: str) -> str:
     """
     return f"{aligned_volume}__{table_name}"
 
-def build_segmentation_table_id(aligned_volume: str, 
-                                annotation_table_name: str, 
+def build_segmentation_table_name(annotation_table_name: str, 
                                 segmentation_source: str) -> str:
     """Create a table id that combines annotation table and appends 
     segmentation table name and version
