@@ -84,8 +84,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         # TODO: check that schemas that are reference schemas
         # have a reference_table in their metadata
-        return self.create_annotation_table(self.aligned_volume,
-                                            table_name,
+        return self.create_annotation_table(table_name,
                                             schema_type,
                                             description,
                                             user_id,
