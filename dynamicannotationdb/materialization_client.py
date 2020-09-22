@@ -271,9 +271,11 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
                 self.cached_session.add(new_data)
                 self.cached_session.flush()
                 
+                deleted_time = datetime.datetime.now()
+                old_anno.deleted = deleted_time
                 old_anno.superceded_id = new_data.id
                 old_anno.valid = False
-                
+                    
                 old_seg.annotation_id = new_data.id
                 
                 self.commit_session()
