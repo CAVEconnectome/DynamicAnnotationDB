@@ -3,7 +3,6 @@ from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, \
                                       NoAnnotationsFoundWithID, \
                                       UpdateAnnotationError
 from dynamicannotationdb.models import AnnoMetadata
-from dynamicannotationdb.key_utils import get_table_name_from_table_id, build_table_id
 from emannotationschemas import get_flat_schema
 from marshmallow import INCLUDE
 from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError, IntegrityError
@@ -45,31 +44,6 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         self._table = self._cached_table(table_name)
         return self._table
-
-    def get_existing_table_names(self) -> List[str]:
-        """Get all annotation tables that exist for a aligned_volume
-
-        Returns
-        -------
-        List[str]
-            list of table names that exist
-        """
-        table_ids = self._get_existing_table_ids()
-        table_names = [get_table_name_from_table_id(tid) for tid in table_ids]
-        return table_names
-
-    def _get_existing_table_ids_metadata(self) -> List[dict]:
-        """Get all the metadata for all tables
-
-        Returns
-        -------
-        List[dict]
-            all table metadata that exist
-        """
-        return [
-            self.get_table_metadata(self.aligned_volume, table_id)
-            for table_id in self._get_existing_table_ids()
-        ]
 
     def create_table(self, table_name: str,
                      schema_type: str,
@@ -134,9 +108,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         bool
             whether table was successfully deleted
         """
-        table_id = build_table_id(self.aligned_volume, table_name)
         metadata = self.cached_session.query(AnnoMetadata). \
-            filter(AnnoMetadata.table_id == table_id).first()
+            filter(AnnoMetadata.table_name == table_name).first()
         metadata.deleted = datetime.datetime.now()
         self.cached_session.update(metadata)
         self.commit_session()
@@ -156,7 +129,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         bool
             whether drop was successful
         """
-        return self._drop_table(self.aligned_volume, table_name)
+        return self._drop_table(table_name)
 
     def insert_annotations(self, table_name: str,
                           annotations: List[dict]):
@@ -185,11 +158,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         if len(annotations) > insertion_limit:
             raise AnnotationInsertLimitExceeded(len(annotations), insertion_limit)
 
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
+        schema_type = self.get_table_schema(table_name)
 
-        table_id = build_table_id(self.aligned_volume, table_name)
-
-        AnnotationModel = self._cached_table(table_id)
+        AnnotationModel = self._cached_table(table_name)
 
         formatted_anno_data = []
         for annotation in annotations:
@@ -224,14 +195,12 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         List[dict]
             list of returned annotations
         """
-        table_id = build_table_id(self.aligned_volume, table_name)
-
-        AnnotationModel = self._cached_table(table_id)
+        AnnotationModel = self._cached_table(table_name)
 
         annotations = self.cached_session.query(AnnotationModel). \
             filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
         
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
+        schema_type = self.get_table_schema(table_name)
         anno_schema, __ = self._get_flattened_schema(schema_type)
         schema = anno_schema(unknown=INCLUDE)
         try:
@@ -273,11 +242,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         anno_id = annotation.get('id')
         if not anno_id:
             return "Annotation requires an 'id' to update targeted row"
-        schema_type = self.get_table_schema(self.aligned_volume, table_name)
+        schema_type = self.get_table_schema(table_name)
 
-        table_id = build_table_id(self.aligned_volume, table_name)
-
-        AnnotationModel = self._cached_table(table_id)
+        AnnotationModel = self._cached_table(table_name)
 
         new_annotation, __ = self._get_flattened_schema_data(schema_type, annotation)
 
@@ -322,10 +289,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         Raises
         ------
         """
-        table_id = build_table_id(self.aligned_volume, table_name)
-        Model = self._cached_table(table_id)
+        AnnotationModel = self._cached_table(table_name)
 
-        annotations = self.cached_session.query(Model).filter(Model.id.in_(annotation_ids)).all()
+        annotations = self.cached_session.query(AnnotationModel).filter(AnnotationModel.id.in_(annotation_ids)).all()
         if annotations:
             deleted_time = datetime.datetime.now()
             for annotation in annotations:
