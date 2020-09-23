@@ -15,15 +15,20 @@ from dynamicannotationdb.annotation_client import DynamicAnnotationClient
 logging.basicConfig(level=logging.DEBUG)
 test_logger = logging.getLogger()
 
-
 POSTGIS_DOCKER_IMAGE = "mdillon/postgis:latest"
-environ["ALIGNED_VOLUME"] = 'test_volume'
-environ['DB_HOST'] = '127.0.0.1'
+ALIGNED_VOLUME = 'test_volume'
+DB_HOST = '127.0.0.1'
+TABLE_NAME = 'anno_test'
+SCHEMA_TYPE = 'synapse'
+
+SQL_URI = f"postgres://postgres:postgres@{DB_HOST}:5432/{ALIGNED_VOLUME}"
+
+
 
 db_enviroment = [
     f"POSTGRES_USER=postgres",
     f"POSTGRES_PASSWORD=postgres",
-    f"POSTGRES_DB={environ['ALIGNED_VOLUME']}"
+    f"POSTGRES_DB={ALIGNED_VOLUME}"
 ]
 
 db_ports = {"5432/tcp": 5432}
@@ -35,6 +40,22 @@ USE_LOCAL_DB = getenv("USE_LOCAL_TEST_DB", False)
 def docker_client() -> docker.DockerClient:
     yield docker.from_env()
 
+
+@pytest.fixture(scope="session")
+def annotation_client():
+    annotation_client = DynamicAnnotationClient(ALIGNED_VOLUME, SQL_URI)
+    return annotation_client
+
+@pytest.fixture(scope="session")
+def dynamic_annotation_interface():
+    dynamic_annotation_interface = DynamicAnnotationInterface(SQL_URI)
+    return dynamic_annotation_interface
+
+
+@pytest.fixture(scope="session")
+def materialization_client():
+    materialization_client = DynamicMaterializationClient(ALIGNED_VOLUME, SQL_URI)
+    return materialization_client
 
 @pytest.fixture(scope="session", autouse=True)
 def postgis_server(docker_client: docker.DockerClient) -> None:
@@ -59,15 +80,12 @@ def postgis_server(docker_client: docker.DockerClient) -> None:
             ports=db_ports,
         )
 
-        aligned_volume = environ["ALIGNED_VOLUME"]
-        db_host = environ["DB_HOST"]
-        sql_uri = f"postgres://postgres:postgres@{db_host}:5432/{aligned_volume}"
+
 
         test_logger.info('STARTING IMAGE')
         try:
-            environ["SQL_URI"] = sql_uri
             time.sleep(10)
-            check_database(sql_uri)
+            check_database(SQL_URI)
             yield test_container
         finally:
             container = docker_client.containers.get(container_name)
