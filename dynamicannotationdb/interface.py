@@ -198,7 +198,7 @@ class DynamicAnnotationInterface:
         model = em_models.make_segmentation_model(annotation_table_name,
                                                     schema_type,
                                                     pcg_table_name)
-        print(annotation_table_name, model)
+
         self.base.metadata.tables[model.__name__].create(bind=self.engine)
         creation_time = datetime.datetime.now()
 
