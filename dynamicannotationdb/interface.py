@@ -4,7 +4,6 @@ from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError,
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.pool import NullPool
 from marshmallow import EXCLUDE
 from emannotationschemas import get_schema, get_flat_schema
@@ -193,30 +192,30 @@ class DynamicAnnotationInterface:
         segmentation_table_name = build_segmentation_table_name(annotation_table_name,
                                                             pcg_table_name)
         
-        if annotation_table_name in self._get_existing_table_names():
-            model = em_models.make_segmentation_model(annotation_table_name,
-                                                      schema_type,
-                                                      pcg_table_name)
-
-            self.base.metadata.tables[model.__name__].create(bind=self.engine)
-            creation_time = datetime.datetime.now()
-
-            metadata_dict = {
-                'annotation_table': annotation_table_name,
-                'schema_type': schema_type,
-                'table_name': segmentation_table_name,
-                'valid': True,
-                'created': creation_time,
-                'pcg_table_name': pcg_table_name
-            }
-            seg_metadata = SegmentationMetadata(**metadata_dict)
-            self.cached_session.add(seg_metadata)           
-            self.commit_session()
-
-            logging.info(f"Table: {segmentation_table_name} created using {model} model at {creation_time}")
-            return {"Created Succesfully": True, "Table Name": model.__name__}
-        else:
+        if annotation_table_name not in self._get_existing_table_names():
             raise TableNameNotFound
+
+        model = em_models.make_segmentation_model(annotation_table_name,
+                                                    schema_type,
+                                                    pcg_table_name)
+        print(annotation_table_name, model)
+        self.base.metadata.tables[model.__name__].create(bind=self.engine)
+        creation_time = datetime.datetime.now()
+
+        metadata_dict = {
+            'annotation_table': annotation_table_name,
+            'schema_type': schema_type,
+            'table_name': segmentation_table_name,
+            'valid': True,
+            'created': creation_time,
+            'pcg_table_name': pcg_table_name
+        }
+        seg_metadata = SegmentationMetadata(**metadata_dict)
+        self.cached_session.add(seg_metadata)           
+        self.commit_session()
+
+        logging.info(f"Table: {segmentation_table_name} created using {model} model at {creation_time}")
+        return {"Created Succesfully": True, "Table Name": model.__name__}
 
     def get_table_metadata(self, table_name: str):
         metadata = self.cached_session.query(AnnoMetadata).\
@@ -260,7 +259,6 @@ class DynamicAnnotationInterface:
             self.get_table_metadata(table_name)
             for table_name in self._get_existing_table_names()
         ]
-
 
     def get_table_schema(self, table_name: str):
         table_metadata = self.get_table_metadata(table_name)
