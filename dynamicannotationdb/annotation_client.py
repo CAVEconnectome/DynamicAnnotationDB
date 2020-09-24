@@ -110,7 +110,6 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         metadata = self.cached_session.query(AnnoMetadata). \
             filter(AnnoMetadata.table_name == table_name).first()
         metadata.deleted = datetime.datetime.now()
-        self.cached_session.update(metadata)
         self.commit_session()
         return True
 
