@@ -196,7 +196,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         self.cached_session.add_all(annos)
         self.cached_session.flush()
-        segs = [SegmentationModel(**segmentation_data, annotation_id=anno.id)
+        segs = [SegmentationModel(**segmentation_data, id=anno.id)
                 for segmentation_data, anno in zip(formatted_seg_data, annos)]
         self.cached_session.add_all(segs)
         self.commit_session()
