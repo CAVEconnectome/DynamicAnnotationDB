@@ -131,14 +131,14 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         for segmentation in segmentations:
             segmentation_data = flatten_dict(segmentation)
             flat_data = self._map_values_to_schema(segmentation_data, segmentation_schema)
-            flat_data['annotation_id'] = segmentation['annotation_id']
+            flat_data['id'] = segmentation['id']
 
             formatted_seg_data.append(flat_data)
 
         segs = [SegmentationModel(**segmentation_data)
                         for segmentation_data in formatted_seg_data]
 
-        ids = [data['annotation_id'] for data in formatted_seg_data]
+        ids = [data['id'] for data in formatted_seg_data]
         q = self.cached_session.query(SegmentationModel).filter(SegmentationModel.annotation_id.in_([id for id in ids]))
         ids_exist = self.cached_session.query(q.exists()).scalar() 
         
@@ -234,7 +234,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         new_data = AnnotationModel(**new_annotation)
         try:
-            data = self.cached_session.query(AnnotationModel, SegmentationModel).filter(AnnotationModel.id==anno_id).filter(SegmentationModel.annotation_id==anno_id).all()
+            data = self.cached_session.query(AnnotationModel, SegmentationModel).filter(AnnotationModel.id==anno_id).filter(SegmentationModel.id==anno_id).all()
             for old_anno, old_seg in data:
                 if old_anno.superceded_id:
                     raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
@@ -246,9 +246,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
                 old_anno.deleted = deleted_time
                 old_anno.superceded_id = new_data.id
                 old_anno.valid = False
-                    
-                old_seg.annotation_id = new_data.id
-                
+                                    
                 self.commit_session()
                 return f"id {anno_id} updated"
         except NoResultFound as e:
@@ -279,7 +277,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         SegmentationModel = self._cached_table(seg_table_name)
         
         annotations = self.cached_session.query(AnnotationModel).\
-                                          join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
+                                          join(SegmentationModel, SegmentationModel.id==AnnotationModel.id).\
                                           filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
 
         if annotations:
