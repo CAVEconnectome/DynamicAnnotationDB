@@ -80,7 +80,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         SegmentationModel = self._cached_table(seg_table_name)
         
         annotations = self.cached_session.query(AnnotationModel, SegmentationModel).\
-                                          join(SegmentationModel, SegmentationModel.annotation_id==AnnotationModel.id).\
+                                          join(SegmentationModel, SegmentationModel.id==AnnotationModel.id).\
                                           filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
 
         
@@ -137,12 +137,12 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         segs = [SegmentationModel(**segmentation_data)
                         for segmentation_data in formatted_seg_data]
-
+        
         ids = [data['id'] for data in formatted_seg_data]
-        q = self.cached_session.query(SegmentationModel).filter(SegmentationModel.annotation_id.in_([id for id in ids]))
+        q = self.cached_session.query(SegmentationModel).filter(SegmentationModel.id.in_([id for id in ids]))
         ids_exist = self.cached_session.query(q.exists()).scalar() 
         
-        if not ids_exist:
+        if not ids_exist: # TODO replace this with a filter for ids that are missing from this list
             self.cached_session.add_all(segs)
             self.commit_session()
             return True
