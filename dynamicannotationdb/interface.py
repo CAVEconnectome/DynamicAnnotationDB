@@ -354,9 +354,13 @@ class DynamicAnnotationInterface:
         except TableNameNotFound as error:
             logging.error(f"Cannot load table {error}")
 
-    def _get_table_row_count(self, table_name: str) -> int:
+    def _get_table_row_count(self, table_name: str, filter_valid: bool=False) -> int:
         model = self._cached_table(table_name)
-        return self.cached_session.query(func.count(model.id)).scalar()
+        if filter_valid:
+            row_count = self.cached_session.query(func.count(model.id)).filter(model.valid==True).scalar()
+        else:
+            row_count = self.cached_session.query(func.count(model.id)).scalar()
+        return row_count
 
     def get_max_id_value(self, table_name: str) -> int:
         model = self._cached_table(table_name)
