@@ -20,7 +20,7 @@ ALIGNED_VOLUME = 'test_volume'
 DB_HOST = '127.0.0.1'
 TABLE_NAME = 'anno_test'
 SCHEMA_TYPE = 'synapse'
-
+PCG_TABLE_NAME = 'test_pcg'
 SQL_URI = f"postgres://postgres:postgres@{DB_HOST}:5432/{ALIGNED_VOLUME}"
 
 

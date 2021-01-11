@@ -13,25 +13,13 @@ def test_create_or_select_database(dynamic_annotation_interface):
         new_sql_uri) == f"postgres://postgres:postgres@{DB_HOST}:5432/{ALIGNED_VOLUME}"
 
 
-def test_create_annotation_table(dynamic_annotation_interface):
-    table_name = dynamic_annotation_interface.create_annotation_table(
-        TABLE_NAME,
-        SCHEMA_TYPE,
-        description="some description",
-        user_id="foo@bar.com",
-        reference_table=None,
-        flat_segmentation_source=None)
+# def test_create_segmentation_table(dynamic_annotation_interface):
+#     pcg_table_name = 'test_pcg_table'
+#     seg_table = dynamic_annotation_interface.create_segmentation_table(TABLE_NAME,
+#                                                     SCHEMA_TYPE,
+#                                                     pcg_table_name)
 
-    assert table_name == f"{TABLE_NAME}"
-
-
-def test_create_segmentation_table(dynamic_annotation_interface):
-    pcg_table_name = 'test_pcg_table'
-    seg_table = dynamic_annotation_interface.create_segmentation_table(TABLE_NAME,
-                                                    SCHEMA_TYPE,
-                                                    pcg_table_name)
-
-    assert seg_table['Table Name'] == "anno_test__test_pcg_table"
+#     assert seg_table['Table Name'] == "anno_test__test_pcg_table"
 
 
 def test_get_table_metadata(dynamic_annotation_interface):
@@ -72,4 +60,4 @@ def test_has_table(dynamic_annotation_interface):
 
 def test_get_annotation_table_size(dynamic_annotation_interface):
     table_size = dynamic_annotation_interface.get_annotation_table_size(TABLE_NAME)
-    assert table_size == 0
+    assert table_size == 3
