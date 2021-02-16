@@ -84,15 +84,19 @@ class DynamicAnnotationInterface:
                 f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{sql_uri.database}'")
             if not database_exists.fetchone():
                 logging.info(f"Creating new database: {sql_uri.database}")
-                print('FFFFFFFFFFFF')
+
                 connection.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
                            WHERE pid <> pg_backend_pid() AND datname = '{sql_uri.database}';")
+
                 # check if template exists, create if missing
                 template_exist = connection.execute(
                     f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'template_postgis'")
+
                 if not template_exist.fetchone():
+
                     # create postgis template db
                     connection.execute(f"CREATE DATABASE template_postgis")
+
                     # create postgis extension
                     template_uri = make_url(f"{sql_base_uri}/template_postgis")
                     tempate_engine = create_engine(
@@ -101,6 +105,7 @@ class DynamicAnnotationInterface:
                         template_connection.execute(
                             'CREATE EXTENSION IF NOT EXISTS postgis')
                     tempate_engine.dispose()
+
                 # finally create new annotation database
                 connection.execute(
                     f"CREATE DATABASE {sql_uri.database} TEMPLATE template_postgis")
