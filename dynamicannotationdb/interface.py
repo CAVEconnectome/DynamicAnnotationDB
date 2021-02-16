@@ -75,17 +75,36 @@ class DynamicAnnotationInterface:
 
         sql_uri = make_url(f"{sql_base_uri}/{aligned_volume}")
         
-
-        temp_engine = create_engine(sql_base_uri, poolclass=NullPool)
+        temp_engine = create_engine(
+            sql_base_uri, poolclass=NullPool, isolation_level='AUTOCOMMIT', pool_pre_ping=True)
 
         with temp_engine.connect() as connection:
             connection.execute("commit")
-            result = connection.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{sql_uri.database}'")
-            if not result.fetchone():
-                logging.info(f"Creating new database {sql_uri.database}")
+            database_exists = connection.execute(
+                f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{sql_uri.database}'")
+            if not database_exists.fetchone():
+                logging.info(f"Creating new database: {sql_uri.database}")
+                print('FFFFFFFFFFFF')
                 connection.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
                            WHERE pid <> pg_backend_pid() AND datname = '{sql_uri.database}';")
-                connection.execute(f"create database {sql_uri.database} template template_postgis")
+                # check if template exists, create if missing
+                template_exist = connection.execute(
+                    f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'template_postgis'")
+                if not template_exist.fetchone():
+                    # create postgis template db
+                    connection.execute(f"CREATE DATABASE template_postgis")
+                    # create postgis extension
+                    template_uri = make_url(f"{sql_base_uri}/template_postgis")
+                    tempate_engine = create_engine(
+                        template_uri, poolclass=NullPool, isolation_level='AUTOCOMMIT', pool_pre_ping=True)
+                    with tempate_engine.connect() as template_connection:
+                        template_connection.execute(
+                            'CREATE EXTENSION IF NOT EXISTS postgis')
+                    tempate_engine.dispose()
+                # finally create new annotation database
+                connection.execute(
+                    f"CREATE DATABASE {sql_uri.database} TEMPLATE template_postgis")
+
         temp_engine.dispose()
         return sql_uri
 
