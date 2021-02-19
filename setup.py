@@ -27,8 +27,8 @@ with open('requirements.txt', 'r') as f:
 setup(
     name="DynamicAnnotationDB",
     version=find_version("dynamicannotationdb", "__init__.py"),
-    author="Sven Dorkenwald",
-    author_email="",
+    author="Sven Dorkenwald, Derrick Brittain",
+    author_email="sdorkenw@princeton.edu",
     description="Annotation Database pendant to the chunkedgraph",
     long_description=long_description,
     long_description_content_type="text/markdown",
