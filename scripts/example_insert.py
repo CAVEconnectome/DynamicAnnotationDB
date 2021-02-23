@@ -1,5 +1,4 @@
 from dynamicannotationdb.annotation_client import DynamicAnnotationClient
-from dynamicannotationdb.key_utils import build_table_id
 
 # Create annotation db instance
 aligned_volume = 'foo'
@@ -18,7 +17,7 @@ new_table = client.create_table(table_name,
 
 # get list of tables in aligned volume
 
-tables = client._get_existing_table_ids()
+tables = client._get_existing_table_names()
 
 
 # Lets add a synapse
