@@ -51,7 +51,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                      user_id: str,
                      reference_table: str = None,
                      flat_segmentation_source: str = None):
-        """Create a new annotation table
+        r"""Create a new annotation table
 
         Parameters
         ----------
