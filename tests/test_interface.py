@@ -1,63 +1,68 @@
-from dynamicannotationdb.interface import DynamicAnnotationInterface
-import pytest
-from os import environ, getenv
 import logging
-from .conftest import test_logger, ALIGNED_VOLUME, DB_HOST, TABLE_NAME, SCHEMA_TYPE, SQL_URI
+
 from sqlalchemy import Table
 
 
-def test_create_or_select_database(dynamic_annotation_interface):
-    new_sql_uri = dynamic_annotation_interface.create_or_select_database(ALIGNED_VOLUME, SQL_URI)
-    test_logger.info(new_sql_uri)
-    assert str(
-        new_sql_uri) == f"postgres://postgres:postgres@{DB_HOST}:5432/{ALIGNED_VOLUME}"
+def test_create_or_select_database(dynamic_annotation_interface,
+                                   database_metadata,
+                                   annotation_metadata):
+    aligned_volume = annotation_metadata["aligned_volume"]
+    sql_uri = database_metadata["sql_uri"]
+    new_sql_uri = dynamic_annotation_interface.create_or_select_database(
+        aligned_volume, sql_uri
+    )
+    logging.info(new_sql_uri)
+    assert str(new_sql_uri) == database_metadata["sql_uri"]
 
 
-# def test_create_segmentation_table(dynamic_annotation_interface):
-#     pcg_table_name = 'test_pcg_table'
-#     seg_table = dynamic_annotation_interface.create_segmentation_table(TABLE_NAME,
-#                                                     SCHEMA_TYPE,
-#                                                     pcg_table_name)
-
-#     assert seg_table['Table Name'] == "anno_test__test_pcg_table"
-
-
-def test_get_table_metadata(dynamic_annotation_interface):
-    metadata = dynamic_annotation_interface.get_table_metadata(TABLE_NAME)
-    test_logger.info(metadata)
-    assert metadata['schema_type'] == SCHEMA_TYPE
-    assert metadata['table_name'] == "anno_test"
-    assert metadata['user_id'] == "foo@bar.com"
-    assert metadata['description'] == "some description"
+def test_get_table_metadata(dynamic_annotation_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+    schema_type = annotation_metadata["schema_type"]
+    metadata = dynamic_annotation_interface.get_table_metadata(table_name)
+    logging.info(metadata)
+    assert metadata["schema_type"] == schema_type
+    assert metadata["table_name"] == "anno_test"
+    assert metadata["user_id"] == "foo@bar.com"
+    assert metadata["description"] == "some description"
 
 
-def test_get_table_schema(dynamic_annotation_interface):
-    schema_info = dynamic_annotation_interface.get_table_schema(TABLE_NAME)
-    assert schema_info == SCHEMA_TYPE
+def test_get_table_schema(dynamic_annotation_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+    schema_type = annotation_metadata["schema_type"]
+    schema_info = dynamic_annotation_interface.get_table_schema(table_name)
+    assert schema_info == schema_type
 
 
-def test_get_table_sql_metadata(dynamic_annotation_interface):
-    sql_metadata = dynamic_annotation_interface.get_table_sql_metadata(TABLE_NAME)
-    test_logger.info(sql_metadata)
+def test_get_table_sql_metadata(dynamic_annotation_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    sql_metadata = dynamic_annotation_interface.get_table_sql_metadata(table_name)
+    logging.info(sql_metadata)
     assert isinstance(sql_metadata, Table)
 
 
-def test__get_model_columns(dynamic_annotation_interface):
-    model_columns = dynamic_annotation_interface._get_model_columns(TABLE_NAME)
-    test_logger.info(model_columns)
+def test_get_model_columns(dynamic_annotation_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    model_columns = dynamic_annotation_interface._get_model_columns(table_name)
+    logging.info(model_columns)
     assert isinstance(model_columns, list)
 
 
-def test__get_existing_table_ids(dynamic_annotation_interface):
+def test_get_existing_table_ids(dynamic_annotation_interface):
     table_names = dynamic_annotation_interface._get_existing_table_names()
     assert isinstance(table_names, list)
 
 
-def test_has_table(dynamic_annotation_interface):
-    has_table = dynamic_annotation_interface.has_table(TABLE_NAME)
+def test_has_table(dynamic_annotation_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    has_table = dynamic_annotation_interface.has_table(table_name)
     assert has_table == True
 
 
-def test_get_annotation_table_size(dynamic_annotation_interface):
-    table_size = dynamic_annotation_interface.get_annotation_table_size(TABLE_NAME)
+def test_get_annotation_table_size(dynamic_annotation_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    table_size = dynamic_annotation_interface.get_annotation_table_size(table_name)
     assert table_size == 3
