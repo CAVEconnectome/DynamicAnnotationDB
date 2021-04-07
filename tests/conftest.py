@@ -87,7 +87,7 @@ def postgis_server(docker_mode, database_metadata: dict) -> None:
             check_database(sql_uri)
         except Exception as e:
             raise (e)
-    yield test_container
+    yield
     if docker_mode:
         warnings.filterwarnings(
             action="ignore", message="unclosed", category=ResourceWarning
