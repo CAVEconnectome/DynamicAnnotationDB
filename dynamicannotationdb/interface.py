@@ -137,7 +137,7 @@ class DynamicAnnotationInterface:
                                 user_id: str,
                                 reference_table: str = None,
                                 flat_segmentation_source: str=None):
-        """Create new annotation table unless already exists
+        r"""Create new annotation table unless already exists
 
         Parameters
         ----------
