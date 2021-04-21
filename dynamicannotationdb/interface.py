@@ -205,7 +205,7 @@ class DynamicAnnotationInterface:
         schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
         pcg_table_name : str
-            name of pychunked graph segmentation to use
+            name of chunkedgraph segmentation to use
 
         Returns
         -------
@@ -239,7 +239,7 @@ class DynamicAnnotationInterface:
         self.commit_session()
 
         logging.info(f"Table: {segmentation_table_name} created using {model} model at {creation_time}")
-        return {"Created Succesfully": True, "Table Name": model.__name__}
+        return {"Created Successfully": True, "Table Name": model.__name__}
 
     def get_table_metadata(self, table_name: str):
         metadata = self.cached_session.query(AnnoMetadata).\

@@ -80,7 +80,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         Returns
         -------
         str
-           desciption of table at creation time
+           description of table at creation time
         """
         # TODO: check that schemas that are reference schemas
         # have a reference_table in their metadata
@@ -144,7 +144,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         Returns
         -------
         bool
-            True is succesfully inserted annotations
+            True is successfully inserted annotations
 
         Raises
         ------

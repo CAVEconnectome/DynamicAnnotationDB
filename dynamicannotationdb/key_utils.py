@@ -27,13 +27,13 @@ def build_segmentation_table_name(annotation_table_name: str,
     annotation_table_name : str
         exiting annotation table name
     pcg_table_name : str
-        name of pychunkedgraph table
+        name of chunkedgraph table
 
     Returns
     -------
     str
         formatted name of table combining the annotation table id with 
-        pychunkedgraph segmentation source name
+        chunkedgraph segmentation source name
     """
     return f"{annotation_table_name}__{segmentation_source}"
 

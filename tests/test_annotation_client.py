@@ -27,10 +27,10 @@ def test_insert_annotation(annotation_client, annotation_metadata):
             "size": 1,
         }
     ]
-    is_commmited = annotation_client.insert_annotations(table_name, test_data)
+    is_committed = annotation_client.insert_annotations(table_name, test_data)
     annotation_client.cached_session.close()
 
-    assert is_commmited == True
+    assert is_committed == True
 
 
 def test_insert_another_annotation(annotation_client, annotation_metadata):
@@ -44,10 +44,10 @@ def test_insert_another_annotation(annotation_client, annotation_metadata):
             "size": 1,
         }
     ]
-    is_commmited = annotation_client.insert_annotations(table_name, test_data)
+    is_committed = annotation_client.insert_annotations(table_name, test_data)
     annotation_client.cached_session.close()
 
-    assert is_commmited == True
+    assert is_committed == True
 
 
 def test_get_annotation(annotation_client, annotation_metadata):

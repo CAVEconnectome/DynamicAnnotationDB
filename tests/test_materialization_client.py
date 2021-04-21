@@ -19,7 +19,7 @@ def test_create_and_attach_seg_table(materialization_client, annotation_metadata
         table_name, pcg_table_name
     )
     assert table_added_status == {
-        "Created Succesfully": True,
+        "Created Successfully": True,
         "Table Name": f"{table_name}__{pcg_table_name}",
     }
 
