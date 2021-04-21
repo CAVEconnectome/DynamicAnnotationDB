@@ -6,6 +6,9 @@ name: DynamicAnnotationDB
 on:
   push:
     branches: master
+    paths:
+    - 'dynamicannotationdb/**'
+    - 'tests/**'  
   pull_request:
     branches: master
 
