@@ -16,19 +16,19 @@ logging.basicConfig(level=logging.DEBUG)
 test_logger = logging.getLogger()
 
 POSTGIS_DOCKER_IMAGE = "mdillon/postgis:latest"
-ALIGNED_VOLUME = 'test_volume'
-DB_HOST = '127.0.0.1'
-TABLE_NAME = 'anno_test'
-SCHEMA_TYPE = 'synapse'
-PCG_TABLE_NAME = 'test_pcg'
+ALIGNED_VOLUME = "test_volume"
+DB_HOST = "127.0.0.1"
+TABLE_NAME = "anno_test"
+VOXEL_RESOLUTION = [4, 4, 40]
+SCHEMA_TYPE = "synapse"
+PCG_TABLE_NAME = "test_pcg"
 SQL_URI = f"postgres://postgres:postgres@{DB_HOST}:5432/{ALIGNED_VOLUME}"
-
 
 
 db_enviroment = [
     f"POSTGRES_USER=postgres",
     f"POSTGRES_PASSWORD=postgres",
-    f"POSTGRES_DB={ALIGNED_VOLUME}"
+    f"POSTGRES_DB={ALIGNED_VOLUME}",
 ]
 
 db_ports = {"5432/tcp": 5432}
@@ -46,6 +46,7 @@ def annotation_client():
     annotation_client = DynamicAnnotationClient(ALIGNED_VOLUME, SQL_URI)
     return annotation_client
 
+
 @pytest.fixture(scope="session")
 def dynamic_annotation_interface():
     dynamic_annotation_interface = DynamicAnnotationInterface(SQL_URI)
@@ -56,6 +57,7 @@ def dynamic_annotation_interface():
 def materialization_client():
     materialization_client = DynamicMaterializationClient(ALIGNED_VOLUME, SQL_URI)
     return materialization_client
+
 
 @pytest.fixture(scope="session", autouse=True)
 def postgis_server(docker_client: docker.DockerClient) -> None:
@@ -73,16 +75,14 @@ def postgis_server(docker_client: docker.DockerClient) -> None:
         test_container = docker_client.containers.run(
             image=POSTGIS_DOCKER_IMAGE,
             detach=True,
-            hostname='test_postgres',
+            hostname="test_postgres",
             auto_remove=True,
             name=container_name,
             environment=db_enviroment,
             ports=db_ports,
         )
 
-
-
-        test_logger.info('STARTING IMAGE')
+        test_logger.info("STARTING IMAGE")
         try:
             time.sleep(10)
             check_database(SQL_URI)

@@ -2,7 +2,7 @@ from dynamicannotationdb.annotation_client import DynamicAnnotationClient
 import pytest
 from os import environ, getenv
 import logging
-from .conftest import test_logger, TABLE_NAME, SCHEMA_TYPE
+from .conftest import test_logger, TABLE_NAME, SCHEMA_TYPE, VOXEL_RESOLUTION
 from sqlalchemy import Table
 
 
@@ -11,6 +11,7 @@ def test_create_table(annotation_client):
                                         description="some description",
                                         user_id="foo@bar.com",
                                         reference_table=None,
+                                        voxel_resolution = VOXEL_RESOLUTION, 
                                         flat_segmentation_source=None)
     assert table_name == f"{TABLE_NAME}"
 
