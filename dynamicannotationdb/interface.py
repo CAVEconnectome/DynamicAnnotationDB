@@ -154,9 +154,9 @@ class DynamicAnnotationInterface:
         schema_type: str,
         description: str,
         user_id: str,
-        voxel_resolution_x: float = None,
-        voxel_resolution_y: float = None,
-        voxel_resolution_z: float = None,
+        voxel_resolution_x: float,
+        voxel_resolution_y: float,
+        voxel_resolution_z: float,
         reference_table: str = None,
         flat_segmentation_source: str = None,
     ):
