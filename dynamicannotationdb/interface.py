@@ -135,6 +135,7 @@ class DynamicAnnotationInterface:
                                 schema_type:str,
                                 description: str,
                                 user_id: str,
+                                voxel_resolution: list = None,
                                 reference_table: str = None,
                                 flat_segmentation_source: str=None):
         r"""Create new annotation table unless already exists
@@ -156,6 +157,9 @@ class DynamicAnnotationInterface:
 
         user_id: str
             user id for this table
+        
+        voxel_resolution: list[float]
+            voxel_resolution [x,y,z] of this annotation table's points
 
         reference_table: str
             reference table name, if required by this schema
@@ -185,12 +189,16 @@ class DynamicAnnotationInterface:
             'created': creation_time,
             'flat_segmentation_source': flat_segmentation_source
         }
+        if voxel_resolution is not None:
+            metadata_dict['voxel_resolution_x']=voxel_resolution[0]
+            metadata_dict['voxel_resolution_y']=voxel_resolution[1]
+            metadata_dict['voxel_resolution_z']=voxel_resolution[2]
+
         logging.info(f"Metadata for table: {table_name} is {metadata_dict}")
         anno_metadata = AnnoMetadata(**metadata_dict)
         self.cached_session.add(anno_metadata)
         self.commit_session()
         logging.info(f"Table: {table_name} created using {model} model at {creation_time}")
-        return table_name
 
     def create_segmentation_table(self, annotation_table_name: str,
                                         schema_type:str,

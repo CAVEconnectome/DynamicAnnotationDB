@@ -49,6 +49,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                      schema_type: str,
                      description: str,
                      user_id: str,
+                     voxel_resolution: list=None,
                      reference_table: str = None,
                      flat_segmentation_source: str = None):
         r"""Create a new annotation table
@@ -70,6 +71,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         user_id: str
             user id for this table
 
+        voxel_resolution: list[float]
+            voxel_resolution [x,y,z] of this annotation table's points
+
         reference_table: str
             reference table name, if required by this schema
 
@@ -88,6 +92,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                                             schema_type,
                                             description,
                                             user_id,
+                                            voxel_resolution=voxel_resolution,
                                             reference_table=reference_table,
                                             flat_segmentation_source=flat_segmentation_source)
 
