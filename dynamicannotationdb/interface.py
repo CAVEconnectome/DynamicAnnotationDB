@@ -135,7 +135,9 @@ class DynamicAnnotationInterface:
                                 schema_type:str,
                                 description: str,
                                 user_id: str,
-                                voxel_resolution: list = None,
+                                voxel_resolution_x: float = None,
+                                voxel_resolution_y: float = None,
+                                voxel_resolution_z: float = None,
                                 reference_table: str = None,
                                 flat_segmentation_source: str=None):
         r"""Create new annotation table unless already exists
@@ -158,8 +160,14 @@ class DynamicAnnotationInterface:
         user_id: str
             user id for this table
         
-        voxel_resolution: list[float]
-            voxel_resolution [x,y,z] of this annotation table's points
+        voxel_resolution_x: float
+            voxel_resolution of this annotation table's point in x (typically nm)
+        
+        voxel_resolution_y: float
+            voxel_resolution of this annotation table's point in y (typically nm)
+        
+        voxel_resolution_z: float
+            voxel_resolution of this annotation table's point in z (typically nm)
 
         reference_table: str
             reference table name, if required by this schema
@@ -187,13 +195,12 @@ class DynamicAnnotationInterface:
             'table_name': table_name,
             'valid': True,
             'created': creation_time,
-            'flat_segmentation_source': flat_segmentation_source
+            'flat_segmentation_source': flat_segmentation_source,
+            'voxel_resolution_x': voxel_resolution_x,
+            'voxel_resolution_y': voxel_resolution_y,
+            'voxel_resolution_z': voxel_resolution_z
         }
-        if voxel_resolution is not None:
-            metadata_dict['voxel_resolution_x']=voxel_resolution[0]
-            metadata_dict['voxel_resolution_y']=voxel_resolution[1]
-            metadata_dict['voxel_resolution_z']=voxel_resolution[2]
-
+  
         logging.info(f"Metadata for table: {table_name} is {metadata_dict}")
         anno_metadata = AnnoMetadata(**metadata_dict)
         self.cached_session.add(anno_metadata)
