@@ -24,6 +24,7 @@ def test_get_table_metadata(dynamic_annotation_interface, annotation_metadata):
     assert metadata["table_name"] == "anno_test"
     assert metadata["user_id"] == "foo@bar.com"
     assert metadata["description"] == "some description"
+    assert metadata["voxel_resolution_x"] == 4.0
 
 
 def test_get_table_schema(dynamic_annotation_interface, annotation_metadata):
