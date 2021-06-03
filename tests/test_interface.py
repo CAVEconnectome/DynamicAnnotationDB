@@ -3,9 +3,9 @@ import logging
 from sqlalchemy import Table
 
 
-def test_create_or_select_database(dynamic_annotation_interface,
-                                   database_metadata,
-                                   annotation_metadata):
+def test_create_or_select_database(
+    dynamic_annotation_interface, database_metadata, annotation_metadata
+):
     aligned_volume = annotation_metadata["aligned_volume"]
     sql_uri = database_metadata["sql_uri"]
     new_sql_uri = dynamic_annotation_interface.create_or_select_database(
@@ -24,6 +24,7 @@ def test_get_table_metadata(dynamic_annotation_interface, annotation_metadata):
     assert metadata["table_name"] == "anno_test"
     assert metadata["user_id"] == "foo@bar.com"
     assert metadata["description"] == "some description"
+    assert metadata["voxel_resolution_x"] == 4.0
 
 
 def test_get_table_schema(dynamic_annotation_interface, annotation_metadata):

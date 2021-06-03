@@ -4,12 +4,17 @@ import logging
 def test_create_table(annotation_client, annotation_metadata):
     table_name = annotation_metadata["table_name"]
     schema_type = annotation_metadata["schema_type"]
-
+    vx = annotation_metadata["voxel_resolution_x"]
+    vy = annotation_metadata["voxel_resolution_y"]
+    vz = annotation_metadata["voxel_resolution_z"]
     table = annotation_client.create_table(
         table_name,
         schema_type,
         description="some description",
         user_id="foo@bar.com",
+        voxel_resolution_x=vx,
+        voxel_resolution_y=vy,
+        voxel_resolution_z=vz,
         reference_table=None,
         flat_segmentation_source=None,
     )

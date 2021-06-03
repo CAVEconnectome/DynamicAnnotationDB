@@ -1,11 +1,18 @@
 from dynamicannotationdb.interface import DynamicAnnotationInterface
-from dynamicannotationdb.errors import AnnotationInsertLimitExceeded, \
-                                      NoAnnotationsFoundWithID, \
-                                      UpdateAnnotationError
+from dynamicannotationdb.errors import (
+    AnnotationInsertLimitExceeded,
+    NoAnnotationsFoundWithID,
+    UpdateAnnotationError,
+)
 from dynamicannotationdb.models import AnnoMetadata
 from emannotationschemas import get_flat_schema
 from marshmallow import INCLUDE
-from sqlalchemy.exc import ArgumentError, InvalidRequestError, OperationalError, IntegrityError
+from sqlalchemy.exc import (
+    ArgumentError,
+    InvalidRequestError,
+    OperationalError,
+    IntegrityError,
+)
 from sqlalchemy.orm.exc import NoResultFound
 
 from typing import List
@@ -15,7 +22,6 @@ import json
 
 
 class DynamicAnnotationClient(DynamicAnnotationInterface):
-    
     def __init__(self, aligned_volume, sql_base_uri):
         sql_uri = self.create_or_select_database(aligned_volume, sql_base_uri)
         super().__init__(sql_uri)
@@ -45,30 +51,46 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         self._table = self._cached_table(table_name)
         return self._table
 
-    def create_table(self, table_name: str,
-                     schema_type: str,
-                     description: str,
-                     user_id: str,
-                     reference_table: str = None,
-                     flat_segmentation_source: str = None):
+    def create_table(
+        self,
+        table_name: str,
+        schema_type: str,
+        description: str,
+        user_id: str,
+        voxel_resolution_x: float,
+        voxel_resolution_y: float,
+        voxel_resolution_z: float,
+        reference_table: str = None,
+        flat_segmentation_source: str = None,
+    ):
         r"""Create a new annotation table
 
         Parameters
         ----------
         table_name : str
             name of new table
-            
+
         schema_type : str
             type of schema for that table
 
         description: str
-            a string with a human readable explanation of 
+            a string with a human readable explanation of
             what is in the table. Including who made it
             and any information that helps interpret the fields
             of the annotations.
 
         user_id: str
             user id for this table
+
+        voxel_resolution_x: float
+            voxel_resolution of this annotation table's point in x (typically nm)
+
+        voxel_resolution_y: float
+            voxel_resolution of this annotation table's point in y (typically nm)
+
+        voxel_resolution_z: float
+            voxel_resolution of this annotation table's point in z (typically nm)
+
 
         reference_table: str
             reference table name, if required by this schema
@@ -84,12 +106,17 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         # TODO: check that schemas that are reference schemas
         # have a reference_table in their metadata
-        return self.create_annotation_table(table_name,
-                                            schema_type,
-                                            description,
-                                            user_id,
-                                            reference_table=reference_table,
-                                            flat_segmentation_source=flat_segmentation_source)
+        return self.create_annotation_table(
+            table_name,
+            schema_type,
+            description,
+            user_id,
+            voxel_resolution_x=voxel_resolution_x,
+            voxel_resolution_y=voxel_resolution_y,
+            voxel_resolution_z=voxel_resolution_z,
+            reference_table=reference_table,
+            flat_segmentation_source=flat_segmentation_source,
+        )
 
     def delete_table(self, table_name: str) -> bool:
         """Marks a table for deletion, which will
@@ -107,8 +134,11 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         bool
             whether table was successfully deleted
         """
-        metadata = self.cached_session.query(AnnoMetadata). \
-            filter(AnnoMetadata.table_name == table_name).first()
+        metadata = (
+            self.cached_session.query(AnnoMetadata)
+            .filter(AnnoMetadata.table_name == table_name)
+            .first()
+        )
         metadata.deleted = datetime.datetime.now()
         self.commit_session()
         return True
@@ -129,8 +159,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         return self._drop_table(table_name)
 
-    def insert_annotations(self, table_name: str,
-                          annotations: List[dict]):
+    def insert_annotations(self, table_name: str, annotations: List[dict]):
         """Insert some annotations.
 
         Parameters
@@ -163,22 +192,26 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         formatted_anno_data = []
         for annotation in annotations:
 
-            annotation_data, __ = self._get_flattened_schema_data(schema_type, annotation)
-            if annotation.get('id'):
-                annotation_data['id'] = annotation['id']
+            annotation_data, __ = self._get_flattened_schema_data(
+                schema_type, annotation
+            )
+            if annotation.get("id"):
+                annotation_data["id"] = annotation["id"]
 
-            annotation_data['created'] = datetime.datetime.now()
-            annotation_data['valid'] = True
+            annotation_data["created"] = datetime.datetime.now()
+            annotation_data["valid"] = True
             formatted_anno_data.append(annotation_data)
 
-        annos = [AnnotationModel(**annotation_data) for annotation_data in formatted_anno_data]
+        annos = [
+            AnnotationModel(**annotation_data)
+            for annotation_data in formatted_anno_data
+        ]
 
         self.cached_session.add_all(annos)
         self.commit_session()
         return True
 
-    def get_annotations(self, table_name: str,
-                       annotation_ids: List[int]) -> List[dict]:
+    def get_annotations(self, table_name: str, annotation_ids: List[int]) -> List[dict]:
         """Get a set of annotations by ID
 
         Parameters
@@ -195,9 +228,12 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         AnnotationModel = self._cached_table(table_name)
 
-        annotations = self.cached_session.query(AnnotationModel). \
-            filter(AnnotationModel.id.in_([x for x in annotation_ids])).all()
-        
+        annotations = (
+            self.cached_session.query(AnnotationModel)
+            .filter(AnnotationModel.id.in_([x for x in annotation_ids]))
+            .all()
+        )
+
         schema_type = self.get_table_schema(table_name)
         anno_schema, __ = self._get_flattened_schema(schema_type)
         schema = anno_schema(unknown=INCLUDE)
@@ -206,9 +242,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
             for anno in annotations:
                 anno_data = anno.__dict__
-                anno_data['created'] = str(anno_data.get('created'))
-                anno_data['deleted'] = str(anno_data.get('deleted'))
-                anno_data.pop('_sa_instance_state', None)
+                anno_data["created"] = str(anno_data.get("created"))
+                anno_data["deleted"] = str(anno_data.get("deleted"))
+                anno_data.pop("_sa_instance_state", None)
                 data.append(anno_data)
 
             return schema.load(data, many=True)
@@ -217,8 +253,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             logging.exception(e)
             raise NoAnnotationsFoundWithID(annotation_ids)
 
-    def update_annotation(self, table_name: str,
-                          annotation: dict):
+    def update_annotation(self, table_name: str, annotation: dict):
         """Update an annotation
 
         Parameters
@@ -237,7 +272,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         ------
         TODO: make this raise an exception rather than return strings
         """
-        anno_id = annotation.get('id')
+        anno_id = annotation.get("id")
         if not anno_id:
             return "Annotation requires an 'id' to update targeted row"
         schema_type = self.get_table_schema(table_name)
@@ -246,19 +281,23 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         new_annotation, __ = self._get_flattened_schema_data(schema_type, annotation)
 
-        new_annotation['created'] = datetime.datetime.now()
-        new_annotation['valid'] = True
+        new_annotation["created"] = datetime.datetime.now()
+        new_annotation["valid"] = True
 
         new_data = AnnotationModel(**new_annotation)
         try:
-            old_anno = self.cached_session.query(AnnotationModel).filter(AnnotationModel.id == anno_id).one()
+            old_anno = (
+                self.cached_session.query(AnnotationModel)
+                .filter(AnnotationModel.id == anno_id)
+                .one()
+            )
 
             if old_anno.superceded_id:
                 raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
 
             self.cached_session.add(new_data)
             self.cached_session.flush()
-            
+
             deleted_time = datetime.datetime.now()
             old_anno.deleted = deleted_time
             old_anno.superceded_id = new_data.id
@@ -270,8 +309,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         except NoResultFound as e:
             return f"No result found for {anno_id}. Error: {e}"
 
-    def delete_annotation(self, table_name: str,
-                          annotation_ids: List[int]):
+    def delete_annotation(self, table_name: str, annotation_ids: List[int]):
         """Delete annotations by ids
 
         Parameters
@@ -289,7 +327,11 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         AnnotationModel = self._cached_table(table_name)
 
-        annotations = self.cached_session.query(AnnotationModel).filter(AnnotationModel.id.in_(annotation_ids)).all()
+        annotations = (
+            self.cached_session.query(AnnotationModel)
+            .filter(AnnotationModel.id.in_(annotation_ids))
+            .all()
+        )
         if annotations:
             deleted_time = datetime.datetime.now()
             for annotation in annotations:

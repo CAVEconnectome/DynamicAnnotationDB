@@ -48,6 +48,9 @@ def annotation_metadata():
         "table_name": "anno_test",
         "schema_type": "synapse",
         "pcg_table_name": "test_pcg",
+        "voxel_resolution_x": 4.0,
+        "voxel_resolution_y": 4.0,
+        "voxel_resolution_z": 40.0,
     }
 
 
