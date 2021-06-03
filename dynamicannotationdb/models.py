@@ -1,8 +1,19 @@
-from sqlalchemy import Column, Boolean, String, UniqueConstraint, Integer, DateTime, Text, ForeignKey
+from sqlalchemy import (
+    Column,
+    Boolean,
+    String,
+    UniqueConstraint,
+    Integer,
+    DateTime,
+    Text,
+    ForeignKey,
+    Float,
+)
 from emannotationschemas.models import Base
 
+
 class AnnoMetadata(Base):
-    __tablename__ = 'annotation_table_metadata'
+    __tablename__ = "annotation_table_metadata"
     id = Column(Integer, primary_key=True)
     schema_type = Column(String(100), nullable=False)
     table_name = Column(String(100), nullable=False, unique=True)
@@ -13,10 +24,13 @@ class AnnoMetadata(Base):
     description = Column(Text, nullable=False)
     reference_table = Column(String(100), nullable=True)
     flat_segmentation_source = Column(String(300), nullable=True)
+    voxel_resolution_x = Column(Float, nullable=True)
+    voxel_resolution_y = Column(Float, nullable=True)
+    voxel_resolution_z = Column(Float, nullable=True)
 
 
 class SegmentationMetadata(Base):
-    __tablename__ = 'segmentation_table_metadata'
+    __tablename__ = "segmentation_table_metadata"
     id = Column(Integer, primary_key=True)
     schema_type = Column(String(100), nullable=False)
     table_name = Column(String(100), nullable=False, unique=True)
@@ -26,4 +40,6 @@ class SegmentationMetadata(Base):
     segmentation_source = Column(String(255), nullable=True)
     pcg_table_name = Column(String(255), nullable=False)
     last_updated = Column(DateTime, nullable=True)
-    annotation_table = Column(String(100), ForeignKey('annotation_table_metadata.table_name'))
+    annotation_table = Column(
+        String(100), ForeignKey("annotation_table_metadata.table_name")
+    )
