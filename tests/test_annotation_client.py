@@ -11,7 +11,9 @@ def test_create_table(annotation_client):
                                         description="some description",
                                         user_id="foo@bar.com",
                                         reference_table=None,
-                                        voxel_resolution = VOXEL_RESOLUTION, 
+                                        voxel_resolution_x = VOXEL_RESOLUTION[0],
+                                        voxel_resolution_y = VOXEL_RESOLUTION[1],
+                                        voxel_resolution_z = VOXEL_RESOLUTION[2],
                                         flat_segmentation_source=None)
     assert table_name == f"{TABLE_NAME}"
 

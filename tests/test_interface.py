@@ -2,15 +2,26 @@ from dynamicannotationdb.interface import DynamicAnnotationInterface
 import pytest
 from os import environ, getenv
 import logging
-from .conftest import test_logger, ALIGNED_VOLUME, DB_HOST, TABLE_NAME, SCHEMA_TYPE, SQL_URI
+from .conftest import (
+    test_logger,
+    ALIGNED_VOLUME,
+    DB_HOST,
+    TABLE_NAME,
+    SCHEMA_TYPE,
+    SQL_URI,
+)
 from sqlalchemy import Table
 
 
 def test_create_or_select_database(dynamic_annotation_interface):
-    new_sql_uri = dynamic_annotation_interface.create_or_select_database(ALIGNED_VOLUME, SQL_URI)
+    new_sql_uri = dynamic_annotation_interface.create_or_select_database(
+        ALIGNED_VOLUME, SQL_URI
+    )
     test_logger.info(new_sql_uri)
-    assert str(
-        new_sql_uri) == f"postgres://postgres:postgres@{DB_HOST}:5432/{ALIGNED_VOLUME}"
+    assert (
+        str(new_sql_uri)
+        == f"postgres://postgres:postgres@{DB_HOST}:5432/{ALIGNED_VOLUME}"
+    )
 
 
 # def test_create_segmentation_table(dynamic_annotation_interface):
@@ -25,11 +36,13 @@ def test_create_or_select_database(dynamic_annotation_interface):
 def test_get_table_metadata(dynamic_annotation_interface):
     metadata = dynamic_annotation_interface.get_table_metadata(TABLE_NAME)
     test_logger.info(metadata)
-    assert metadata['schema_type'] == SCHEMA_TYPE
-    assert metadata['table_name'] == "anno_test"
-    assert metadata['user_id'] == "foo@bar.com"
-    assert metadata['description'] == "some description"
-    assert metadata['voxel_resolution_x'] == 4.0
+    assert metadata["schema_type"] == SCHEMA_TYPE
+    assert metadata["table_name"] == "anno_test"
+    assert metadata["user_id"] == "foo@bar.com"
+    assert metadata["description"] == "some description"
+    assert metadata["voxel_resolution_x"] == 4.0
+    assert metadata["voxel_resolution_y"] == 4.0
+    assert metadata["voxel_resolution_z"] == 40.0
 
 
 def test_get_table_schema(dynamic_annotation_interface):
