@@ -24,9 +24,9 @@ class AnnoMetadata(Base):
     description = Column(Text, nullable=False)
     reference_table = Column(String(100), nullable=True)
     flat_segmentation_source = Column(String(300), nullable=True)
-    voxel_resolution_x = Column(Float, nullable=True)
-    voxel_resolution_y = Column(Float, nullable=True)
-    voxel_resolution_z = Column(Float, nullable=True)
+    voxel_resolution_x = Column(Float, nullable=False)
+    voxel_resolution_y = Column(Float, nullable=False)
+    voxel_resolution_z = Column(Float, nullable=False)
 
 
 class SegmentationMetadata(Base):
