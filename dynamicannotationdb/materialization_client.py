@@ -93,8 +93,10 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             seg_data = seg.__dict__
             anno_data['created'] = str(anno_data.get('created'))
             anno_data['deleted'] = str(anno_data.get('deleted'))
-            anno_data.pop('_sa_instance_state', None)
-            seg_data.pop('_sa_instance_state', None)
+            anno_data = {k: v for (k, v) in anno_data.items()
+                     if k != '_sa_instance_state'}
+            seg_data = {k: v for (k, v) in seg_data.items()
+                     if k != '_sa_instance_state'}
             merged_data = {**anno_data, **seg_data}
             data.append(merged_data)
 
