@@ -288,8 +288,10 @@ class DynamicAnnotationInterface:
             .first()
         )
         try:
-            metadata.__dict__.pop("_sa_instance_state")
-            return metadata.__dict__
+            #metadata.__dict__.pop("_sa_instance_state")
+            l = {k: v for (k, v) in metadata.__dict__.items()
+                     if k != '_sa_instance_state'}
+            return l
         except Exception as e:
             raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
 
@@ -301,8 +303,9 @@ class DynamicAnnotationInterface:
             .first()
         )
         try:
-            metadata.__dict__.pop("_sa_instance_state")
-            return metadata.__dict__
+            l = {k: v for (k, v) in metadata.__dict__.items()
+                     if k != '_sa_instance_state'}
+            return l
         except Exception as e:
             raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
 
