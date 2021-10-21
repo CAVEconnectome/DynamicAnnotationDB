@@ -1,26 +1,25 @@
-from sqlalchemy import create_engine, inspect, func, MetaData
-from sqlalchemy.orm import sessionmaker, Session, scoped_session
-from sqlalchemy.exc import (
-    ArgumentError,
-    InvalidRequestError,
-    OperationalError,
-    IntegrityError,
-)
-from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.engine.url import make_url
-from sqlalchemy.ext.declarative.api import DeclarativeMeta
-from sqlalchemy.pool import NullPool
-from marshmallow import EXCLUDE
-from emannotationschemas import get_schema, get_flat_schema
-from emannotationschemas.flatten import flatten_dict
+import datetime
+import logging
+from typing import List
+
+from emannotationschemas import get_schema
 from emannotationschemas import models as em_models
+from emannotationschemas.flatten import flatten_dict
+from marshmallow import EXCLUDE
+from sqlalchemy import create_engine, func, inspect, DDL, event
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
+from sqlalchemy.pool import NullPool
+
+from dynamicannotationdb.errors import (
+    TableAlreadyExists,
+    TableNameNotFound,
+    SelfReferenceTableError,
+)
 from dynamicannotationdb.key_utils import build_segmentation_table_name
 from dynamicannotationdb.models import AnnoMetadata, SegmentationMetadata
-from dynamicannotationdb.errors import TableNameNotFound, TableAlreadyExists
-from typing import List
-import logging
-import datetime
-import time
 
 
 class DynamicAnnotationInterface:
@@ -102,13 +101,13 @@ class DynamicAnnotationInterface:
 
                 # check if template exists, create if missing
                 template_exist = connection.execute(
-                    f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'template_postgis'"
+                    "SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'template_postgis'"
                 )
 
                 if not template_exist.fetchone():
 
                     # create postgis template db
-                    connection.execute(f"CREATE DATABASE template_postgis")
+                    connection.execute("CREATE DATABASE template_postgis")
 
                     # create postgis extension
                     template_uri = make_url(f"{sql_base_uri}/template_postgis")
@@ -141,12 +140,20 @@ class DynamicAnnotationInterface:
     def commit_session(self):
         try:
             self.cached_session.commit()
-        except Exception:
+        except Exception as e:
             self.cached_session.rollback()
-            logging.exception(f"SQL Error")
+            logging.exception(f"SQL Error: {e}")
         finally:
             self.cached_session.close()
         self._cached_session = None
+
+    def check_table_is_unique(self, table_name):
+        existing_tables = self._get_existing_table_names()
+        if table_name in existing_tables:
+            raise TableAlreadyExists(
+                f"Table creation failed: {table_name} already exists"
+            )
+        return existing_tables
 
     def create_annotation_table(
         self,
@@ -157,8 +164,9 @@ class DynamicAnnotationInterface:
         voxel_resolution_x: float,
         voxel_resolution_y: float,
         voxel_resolution_z: float,
-        reference_table: str = None,
+        table_metadata: dict = None,
         flat_segmentation_source: str = None,
+        with_crud_columns: bool = True,
     ):
         r"""Create new annotation table unless already exists
 
@@ -171,7 +179,7 @@ class DynamicAnnotationInterface:
         schema_type : str
             Type of schema to use, must be a valid type from EMAnnotationSchemas
 
-         description: str
+        description: str
             a string with a human readable explanation of
             what is in the table. Including who made it
             and any information that helps interpret the fields
@@ -189,20 +197,75 @@ class DynamicAnnotationInterface:
         voxel_resolution_z: float
             voxel_resolution of this annotation table's point in z (typically nm)
 
-        reference_table: str
-            reference table name, if required by this schema
+        table_metadata: dict
+            keys:
+
+            reference_table, if required by this schema if type is a ReferenceAnnotation
+
+            track_target_id_updates, add triggers to update target_id when reference table is updated
 
         flat_segmentation_source: str
             a path to a segmentation source associated with this table
              i.e. 'precomputed:\\gs:\\my_synapse_seg\example1'
+
+        with_crud_columns: bool
+            add additional columns to track CRUD operations on rows
         """
+        existing_tables = self.check_table_is_unique(table_name)
+        if table_metadata:
+            reference_table = table_metadata.get("reference_table")
 
-        if table_name in self._get_existing_table_names():
-            logging.warning(f"Table creation failed: {table_name} already exists")
-            raise TableAlreadyExists
+            if table_name is reference_table:
+                raise SelfReferenceTableError(
+                    f"{reference_table} must target a different table not {table_name}"
+                )
+            if reference_table not in existing_tables:
+                raise TableNameNotFound(
+                    f"Reference table target: '{existing_tables}' does not exist"
+                )
 
-        model = em_models.make_annotation_model(table_name, schema_type)
+            if reference_table:
+                model = em_models.make_reference_annotation_model(
+                    table_name, schema_type, table_metadata, with_crud_columns
+                )
+                if table_metadata.get("track_target_id_updates"):
+                    func = DDL(
+                        f"""
+                        CREATE or REPLACE function update_reference_id()
+                        returns TRIGGER
+                        as $func$
+                        begin
+                            update {table_name} ref
+                            set target_id = new.superceded_id
+                            where ref.target_id = old.id;
+                            return new;
+                        end;
+                        $func$ language plpgsql;
+                        """
+                    )
+                    trigger = DDL(
+                        f"""CREATE TRIGGER target_id AFTER UPDATE ON {reference_table}
+                        FOR EACH ROW EXECUTE PROCEDURE update_reference_id();"""
+                    )
 
+                    event.listen(
+                        model.__table__,
+                        "after_create",
+                        func.execute_if(dialect="postgresql"),
+                    )
+
+                    event.listen(
+                        model.__table__,
+                        "after_create",
+                        trigger.execute_if(dialect="postgresql"),
+                    )
+                    description += f" [Note: This table '{model.__name__}' will update the 'target_id' foreign_key when updates are made to the '{reference_table}' table]"
+
+        else:
+            model = em_models.make_annotation_model(
+                table_name, schema_type, table_metadata, with_crud_columns
+            )
+            reference_table = None
         self.base.metadata.tables[model.__name__].create(bind=self.engine)
         creation_time = datetime.datetime.now()
 
@@ -260,7 +323,6 @@ class DynamicAnnotationInterface:
         model = em_models.make_segmentation_model(
             annotation_table_name, schema_type, pcg_table_name
         )
-
         self.base.metadata.tables[model.__name__].create(bind=self.engine)
         creation_time = datetime.datetime.now()
 
@@ -287,11 +349,11 @@ class DynamicAnnotationInterface:
             .filter(AnnoMetadata.table_name == table_name)
             .first()
         )
-        try:
-            metadata.__dict__.pop("_sa_instance_state")
-            return metadata.__dict__
-        except Exception as e:
-            raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
+        if not metadata:
+            raise TableNameNotFound(
+                f"Error: No table name exists with name {table_name}."
+            )
+        return metadata.__dict__
 
     def get_segmentation_table_metadata(self, table_name: str, pcg_table_name: str):
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
@@ -300,11 +362,11 @@ class DynamicAnnotationInterface:
             .filter(SegmentationMetadata.table_name == seg_table_name)
             .first()
         )
-        try:
-            metadata.__dict__.pop("_sa_instance_state")
-            return metadata.__dict__
-        except Exception as e:
-            raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
+        if not metadata:
+            raise TableNameNotFound(
+                f"Error: No table name exists with name {table_name}."
+            )
+        return metadata.__dict__
 
     def _get_existing_table_by_name(self) -> List[str]:
         """Get the table names of table that exist
@@ -351,16 +413,12 @@ class DynamicAnnotationInterface:
         list
             column names and types
         """
-        try:
-            model_columns = []
-            db_columns = self.insp.get_columns(table_name)
-            for column in db_columns:
-                model_columns.append(tuple([column["name"], column["type"]]))
-            return model_columns
-        except Exception as e:
+        db_columns = self.insp.get_columns(table_name)
+        if not db_columns:
             raise TableNameNotFound(
-                f"Error: {e}. No table name exists with name {table_name}."
+                f"Error: No table name exists with name {table_name}."
             )
+        return [tuple([column["name"], column["type"]]) for column in db_columns]
 
     def _get_all_tables(self):
         return self.cached_session.query(AnnoMetadata).all()
@@ -497,9 +555,10 @@ class DynamicAnnotationInterface:
             flat_segmentation_schema,
         ) = em_models.split_annotation_schema(schema_type)
 
-        return self._map_values_to_schema(
-            data, flat_annotation_schema
-        ), self._map_values_to_schema(data, flat_segmentation_schema)
+        return (
+            self._map_values_to_schema(data, flat_annotation_schema),
+            self._map_values_to_schema(data, flat_segmentation_schema),
+        )
 
     def _get_flattened_schema(self, schema_type: str):
         schema_type = get_schema(schema_type)
