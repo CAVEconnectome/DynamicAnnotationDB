@@ -6,6 +6,7 @@ from emannotationschemas import get_schema
 from emannotationschemas import models as em_models
 from emannotationschemas.flatten import flatten_dict
 from marshmallow import EXCLUDE
+import marshmallow
 from sqlalchemy import create_engine, func, inspect, DDL, event
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.automap import automap_base
@@ -392,15 +393,15 @@ class DynamicAnnotationInterface:
             for table_name in self._get_existing_table_names()
         ]
 
-    def get_table_schema(self, table_name: str):
+    def get_table_schema(self, table_name: str) -> str:
         table_metadata = self.get_table_metadata(table_name)
         return table_metadata["schema_type"]
 
-    def get_table_sql_metadata(self, table_name):
+    def get_table_sql_metadata(self, table_name: str):
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
 
-    def _get_model_columns(self, table_name: str) -> list:
+    def _get_model_columns(self, table_name: str) -> List[tuple]:
         """Return list of column names and types of a given table
 
         Parameters
@@ -423,7 +424,7 @@ class DynamicAnnotationInterface:
     def _get_all_tables(self):
         return self.cached_session.query(AnnoMetadata).all()
 
-    def _get_existing_table_names(self):
+    def _get_existing_table_names(self) -> List[str]:
         """Collects table_names keys of existing tables
 
         Returns
@@ -434,11 +435,11 @@ class DynamicAnnotationInterface:
         metadata = self.cached_session.query(AnnoMetadata).all()
         return [m.table_name for m in metadata]
 
-    def get_valid_table_names(self):
+    def get_valid_table_names(self) -> List[str]:
         metadata = self.cached_session.query(AnnoMetadata).all()
         return [m.table_name for m in metadata if m.valid == True]
 
-    def get_existing_segmentation_table_names(self):
+    def get_existing_segmentation_table_names(self) -> List[str]:
         """Collects table_names keys of existing segmentation tables
         contained in an aligned volume database. Used for materialization.
 
@@ -449,6 +450,14 @@ class DynamicAnnotationInterface:
         """
         metadata = self.cached_session.query(SegmentationMetadata).all()
         return [m.table_name for m in metadata]
+
+    def get_reference_annotation_table_names(self, target_table: str) -> List[str]:
+        metadata = (
+            self.cached_session.query(AnnoMetadata)
+            .filter(AnnoMetadata.reference_table == target_table)
+            .all()
+        )
+        return [table for table in metadata]
 
     def has_table(self, table_name: str) -> bool:
         """Check if a table exists
@@ -519,7 +528,7 @@ class DynamicAnnotationInterface:
         Model = self._cached_table(table_name)
         return self.cached_session.query(Model).count()
 
-    def _drop_table(self, table_name: str):
+    def _drop_table(self, table_name: str) -> bool:
         table = self.base.metadata.tables.get(table_name)
         if table:
             logging.info(f"Deleting {table_name} table")
@@ -570,7 +579,7 @@ class DynamicAnnotationInterface:
 
         return flat_annotation_schema, flat_segmentation_schema
 
-    def _map_values_to_schema(self, data, schema):
+    def _map_values_to_schema(self, data: dict, schema: marshmallow.Schema):
         return {
             key: data[key]
             for key, value in schema._declared_fields.items()
