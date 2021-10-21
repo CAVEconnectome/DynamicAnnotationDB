@@ -8,6 +8,7 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     Float,
+    CheckConstraint,
 )
 from emannotationschemas.models import Base
 
@@ -43,3 +44,21 @@ class SegmentationMetadata(Base):
     annotation_table = Column(
         String(100), ForeignKey("annotation_table_metadata.table_name")
     )
+
+
+class CombinedTableMetadata(Base):
+    __tablename__ = "combined_table_metadata"
+    __table_args__ = CheckConstraint(
+        "reference_table <> annotation_table)", name="unique_references"
+    )
+    id = Column(Integer, primary_key=True)
+    reference_table = Column(
+        String(100), ForeignKey("annotation_table_metadata.table_name")
+    )
+    annotation_table = Column(
+        String(100), ForeignKey("annotation_table_metadata.table_name")
+    )
+    valid = Column(Boolean)
+    created = Column(DateTime, nullable=False)
+    deleted = Column(DateTime, nullable=True)
+    description = Column(Text, nullable=False)
