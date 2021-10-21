@@ -15,7 +15,7 @@ def test_create_table(annotation_client, annotation_metadata):
         voxel_resolution_x=vx,
         voxel_resolution_y=vy,
         voxel_resolution_z=vz,
-        reference_table=None,
+        table_metadata=None,
         flat_segmentation_source=None,
     )
     assert table_name == table
