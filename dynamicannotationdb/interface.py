@@ -199,11 +199,6 @@ class DynamicAnnotationInterface:
             voxel_resolution of this annotation table's point in z (typically nm)
 
         table_metadata: dict
-            keys:
-
-            reference_table, if required by this schema if type is a ReferenceAnnotation
-
-            track_target_id_updates, add triggers to update target_id when reference table is updated
 
         flat_segmentation_source: str
             a path to a segmentation source associated with this table
@@ -214,59 +209,19 @@ class DynamicAnnotationInterface:
         """
         existing_tables = self.check_table_is_unique(table_name)
         if table_metadata:
-            reference_table = table_metadata.get("reference_table")
-
-            if table_name is reference_table:
-                raise SelfReferenceTableError(
-                    f"{reference_table} must target a different table not {table_name}"
-                )
-            if reference_table not in existing_tables:
-                raise TableNameNotFound(
-                    f"Reference table target: '{existing_tables}' does not exist"
-                )
-
-            if reference_table:
-                model = em_models.make_reference_annotation_model(
-                    table_name, schema_type, table_metadata, with_crud_columns
-                )
-                if table_metadata.get("track_target_id_updates"):
-                    func = DDL(
-                        f"""
-                        CREATE or REPLACE function update_reference_id()
-                        returns TRIGGER
-                        as $func$
-                        begin
-                            update {table_name} ref
-                            set target_id = new.superceded_id
-                            where ref.target_id = old.id;
-                            return new;
-                        end;
-                        $func$ language plpgsql;
-                        """
-                    )
-                    trigger = DDL(
-                        f"""CREATE TRIGGER target_id AFTER UPDATE ON {reference_table}
-                        FOR EACH ROW EXECUTE PROCEDURE update_reference_id();"""
-                    )
-
-                    event.listen(
-                        model.__table__,
-                        "after_create",
-                        func.execute_if(dialect="postgresql"),
-                    )
-
-                    event.listen(
-                        model.__table__,
-                        "after_create",
-                        trigger.execute_if(dialect="postgresql"),
-                    )
-                    description += f" [Note: This table '{model.__name__}' will update the 'target_id' foreign_key when updates are made to the '{reference_table}' table]"
-
-        else:
-            model = em_models.make_annotation_model(
-                table_name, schema_type, table_metadata, with_crud_columns
+            reference_table = self._parse_reference_table_metadata(
+                table_name, table_metadata, existing_tables
             )
-            reference_table = None
+
+        model = em_models.make_annotation_model(
+            table_name, schema_type, table_metadata, with_crud_columns
+        )
+
+        if reference_table and table_metadata.get("track_target_id_updates"):
+            description = self.create_reference_update_trigger(
+                table_name, description, reference_table, model
+            )
+
         self.base.metadata.tables[model.__name__].create(bind=self.engine)
         creation_time = datetime.datetime.now()
 
@@ -368,6 +323,42 @@ class DynamicAnnotationInterface:
                 f"Error: No table name exists with name {table_name}."
             )
         return metadata.__dict__
+
+    def create_reference_update_trigger(
+        self, table_name, description, reference_table, model
+    ):
+        func = DDL(
+            f"""
+                    CREATE or REPLACE function update_reference_id()
+                    returns TRIGGER
+                    as $func$
+                    begin
+                        update {table_name} ref
+                        set target_id = new.superceded_id
+                        where ref.target_id = old.id;
+                        return new;
+                    end;
+                    $func$ language plpgsql;
+                    """
+        )
+        trigger = DDL(
+            f"""CREATE TRIGGER target_id AFTER UPDATE ON {reference_table}
+                    FOR EACH ROW EXECUTE PROCEDURE update_reference_id();"""
+        )
+
+        event.listen(
+            model.__table__,
+            "after_create",
+            func.execute_if(dialect="postgresql"),
+        )
+
+        event.listen(
+            model.__table__,
+            "after_create",
+            trigger.execute_if(dialect="postgresql"),
+        )
+        description += f" [Note: This table '{model.__name__}' will update the 'target_id' foreign_key when updates are made to the '{reference_table}' table]"
+        return description
 
     def _get_existing_table_by_name(self) -> List[str]:
         """Get the table names of table that exist
@@ -601,6 +592,22 @@ class DynamicAnnotationInterface:
         """
 
         return table_name in self._cached_tables
+
+    def _parse_reference_table_metadata(
+        self, table_name, table_metadata, existing_tables
+    ):
+        reference_table = table_metadata.get("reference_table")
+
+        if table_name is table_metadata.get("reference_table"):
+            raise SelfReferenceTableError(
+                f"{reference_table} must target a different table not {table_name}"
+            )
+        if table_metadata.get("reference_table") not in existing_tables:
+            raise TableNameNotFound(
+                f"Reference table target: '{existing_tables}' does not exist"
+            )
+
+        return table_metadata.get("reference_table")
 
     def _load_table(self, table_name: str):
         """Load existing table into cached lookup dict instance
