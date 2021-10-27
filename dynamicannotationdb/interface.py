@@ -208,6 +208,8 @@ class DynamicAnnotationInterface:
             add additional columns to track CRUD operations on rows
         """
         existing_tables = self.check_table_is_unique(table_name)
+        reference_table = None
+
         if table_metadata:
             reference_table = self._parse_reference_table_metadata(
                 table_name, table_metadata, existing_tables
@@ -303,7 +305,7 @@ class DynamicAnnotationInterface:
         metadata = (
             self.cached_session.query(AnnoMetadata)
             .filter(AnnoMetadata.table_name == table_name)
-            .first()
+            .one()
         )
         if not metadata:
             raise TableNameNotFound(
