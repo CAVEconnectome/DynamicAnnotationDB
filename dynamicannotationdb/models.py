@@ -48,7 +48,9 @@ class SegmentationMetadata(Base):
 
 class CombinedTableMetadata(Base):
     __tablename__ = "combined_table_metadata"
-    __table_args__ = (CheckConstraint("reference_table <> annotation_table)"),)
+    __table_args__ = (CheckConstraint(
+        "reference_table <> annotation_table", name="not_self_referenced"
+    ),)
 
     id = Column(Integer, primary_key=True)
     reference_table = Column(
