@@ -214,7 +214,7 @@ class DynamicAnnotationInterface:
             reference_table = self._parse_reference_table_metadata(
                 table_name, table_metadata, existing_tables
             )
-
+            self.base.metadata.reflect()
         model = em_models.make_annotation_model(
             table_name, schema_type, table_metadata, with_crud_columns
         )
