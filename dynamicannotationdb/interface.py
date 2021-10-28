@@ -331,7 +331,7 @@ class DynamicAnnotationInterface:
     ):
         func = DDL(
             f"""
-                    CREATE or REPLACE function update_reference_id()
+                    CREATE or REPLACE function {table_name}_update_reference_id()
                     returns TRIGGER
                     as $func$
                     begin
