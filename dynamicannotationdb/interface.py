@@ -330,9 +330,10 @@ class DynamicAnnotationInterface:
     def create_reference_update_trigger(
         self, table_name, description, reference_table, model
     ):
+        func_name = f"{table_name}_update_reference_id"
         func = DDL(
             f"""
-                    CREATE or REPLACE function {table_name}_update_reference_id()
+                    CREATE or REPLACE function {func_name}()
                     returns TRIGGER
                     as $func$
                     begin
@@ -345,8 +346,8 @@ class DynamicAnnotationInterface:
                     """
         )
         trigger = DDL(
-            f"""CREATE TRIGGER target_id AFTER UPDATE ON {reference_table}
-                    FOR EACH ROW EXECUTE PROCEDURE update_reference_id();"""
+            f"""CREATE TRIGGER update_{table_name}_target_id AFTER UPDATE ON {reference_table}
+                    FOR EACH ROW EXECUTE PROCEDURE {func_name}();"""
         )
 
         event.listen(
