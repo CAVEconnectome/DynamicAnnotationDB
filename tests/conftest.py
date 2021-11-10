@@ -35,7 +35,7 @@ def pytest_configure(config):
 @pytest.fixture(scope="session")
 def database_metadata() -> dict:
     yield {
-        "postgis_docker_image": "postgis/postgis:9.6-2.5",
+        "postgis_docker_image": "postgis/postgis:13-master",
         "db_host": "localhost",
         "sql_uri": f"postgresql://postgres:postgres@localhost:5432/test_volume",
     }
