@@ -210,11 +210,12 @@ class DynamicAnnotationInterface:
         existing_tables = self.check_table_is_unique(table_name)
         reference_table = None
 
-        if table_metadata:
+        if table_metadata.get("reference_table"):
             reference_table = self._parse_reference_table_metadata(
                 table_name, table_metadata, existing_tables
             )
             self.base.metadata.reflect()
+
         model = em_models.make_annotation_model(
             table_name, schema_type, table_metadata, with_crud_columns
         )
@@ -600,16 +601,16 @@ class DynamicAnnotationInterface:
     ):
         reference_table = table_metadata.get("reference_table")
 
-        if table_name is table_metadata.get("reference_table"):
+        if table_name is reference_table:
             raise SelfReferenceTableError(
                 f"{reference_table} must target a different table not {table_name}"
             )
-        if table_metadata.get("reference_table") not in existing_tables:
+        if reference_table not in existing_tables:
             raise TableNameNotFound(
                 f"Reference table target: '{existing_tables}' does not exist"
             )
 
-        return table_metadata.get("reference_table")
+        return reference_table
 
     def _load_table(self, table_name: str):
         """Load existing table into cached lookup dict instance
