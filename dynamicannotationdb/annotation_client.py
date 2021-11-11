@@ -86,7 +86,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
 
         table_metadata: dict
-            metadata for table  
+            metadata for table
 
         flat_segmentation_source: str
             a path to a segmentation source associated with this table
@@ -180,7 +180,6 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             raise AnnotationInsertLimitExceeded(len(annotations), insertion_limit)
 
         schema_type = self.get_table_schema(table_name)
-
         AnnotationModel = self._cached_table(table_name)
 
         formatted_anno_data = []
@@ -191,8 +190,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             )
             if annotation.get("id"):
                 annotation_data["id"] = annotation["id"]
-
-            annotation_data["created"] = datetime.datetime.now()
+            if hasattr(AnnotationModel, "created"):
+                annotation_data["created"] = datetime.datetime.now()
             annotation_data["valid"] = True
             formatted_anno_data.append(annotation_data)
 
