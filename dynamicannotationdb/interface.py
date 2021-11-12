@@ -144,6 +144,7 @@ class DynamicAnnotationInterface:
         except Exception as e:
             self.cached_session.rollback()
             logging.exception(f"SQL Error: {e}")
+            raise(e)
         finally:
             self.cached_session.close()
         self._cached_session = None
