@@ -144,7 +144,7 @@ class DynamicAnnotationInterface:
         except Exception as e:
             self.cached_session.rollback()
             logging.exception(f"SQL Error: {e}")
-            raise(e)
+            raise (e)
         finally:
             self.cached_session.close()
         self._cached_session = None
@@ -210,18 +210,29 @@ class DynamicAnnotationInterface:
         """
         existing_tables = self.check_table_is_unique(table_name)
         reference_table = None
+        track_updates = None
 
-        if table_metadata.get("reference_table"):
-            reference_table = self._parse_reference_table_metadata(
-                table_name, table_metadata, existing_tables
-            )
-            self.base.metadata.reflect()
+        if table_metadata:
+            try:
+                reference_table = table_metadata.get("reference_table")
+            except AttributeError as e:
+                reference_table = None
+            try:
+                track_updates = table_metadata.get("track_target_id_updates")
+            except AttributeError as e:
+                track_updates = None
+
+            if reference_table:
+                reference_table = self._parse_reference_table_metadata(
+                    table_name, table_metadata, existing_tables
+                )
+                self.base.metadata.reflect()
 
         model = em_models.make_annotation_model(
             table_name, schema_type, table_metadata, with_crud_columns
         )
 
-        if reference_table and table_metadata.get("track_target_id_updates"):
+        if reference_table and track_updates:
             description = self.create_reference_update_trigger(
                 table_name, description, reference_table, model
             )
