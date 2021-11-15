@@ -1,24 +1,17 @@
-from dynamicannotationdb.interface import DynamicAnnotationInterface
+import datetime
+import logging
+from typing import List
+
+from marshmallow import INCLUDE
+from sqlalchemy.orm.exc import NoResultFound
+
 from dynamicannotationdb.errors import (
     AnnotationInsertLimitExceeded,
     NoAnnotationsFoundWithID,
     UpdateAnnotationError,
 )
+from dynamicannotationdb.interface import DynamicAnnotationInterface
 from dynamicannotationdb.models import AnnoMetadata
-from emannotationschemas import get_flat_schema
-from marshmallow import INCLUDE
-from sqlalchemy.exc import (
-    ArgumentError,
-    InvalidRequestError,
-    OperationalError,
-    IntegrityError,
-)
-from sqlalchemy.orm.exc import NoResultFound
-
-from typing import List
-import datetime
-import logging
-import json
 
 
 class DynamicAnnotationClient(DynamicAnnotationInterface):
@@ -60,7 +53,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         voxel_resolution_x: float,
         voxel_resolution_y: float,
         voxel_resolution_z: float,
-        reference_table: str = None,
+        table_metadata: dict = None,
         flat_segmentation_source: str = None,
     ):
         r"""Create a new annotation table
@@ -92,8 +85,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             voxel_resolution of this annotation table's point in z (typically nm)
 
 
-        reference_table: str
-            reference table name, if required by this schema
+        table_metadata: dict
+            metadata for table
 
         flat_segmentation_source: str
             a path to a segmentation source associated with this table
@@ -106,6 +99,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         """
         # TODO: check that schemas that are reference schemas
         # have a reference_table in their metadata
+        # TODO create table_metadata schema
         return self.create_annotation_table(
             table_name,
             schema_type,
@@ -114,7 +108,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             voxel_resolution_x=voxel_resolution_x,
             voxel_resolution_y=voxel_resolution_y,
             voxel_resolution_z=voxel_resolution_z,
-            reference_table=reference_table,
+            table_metadata=table_metadata,
             flat_segmentation_source=flat_segmentation_source,
         )
 
@@ -186,7 +180,6 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             raise AnnotationInsertLimitExceeded(len(annotations), insertion_limit)
 
         schema_type = self.get_table_schema(table_name)
-
         AnnotationModel = self._cached_table(table_name)
 
         formatted_anno_data = []
@@ -197,8 +190,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             )
             if annotation.get("id"):
                 annotation_data["id"] = annotation["id"]
-
-            annotation_data["created"] = datetime.datetime.now()
+            if hasattr(AnnotationModel, "created"):
+                annotation_data["created"] = datetime.datetime.now()
             annotation_data["valid"] = True
             formatted_anno_data.append(annotation_data)
 
