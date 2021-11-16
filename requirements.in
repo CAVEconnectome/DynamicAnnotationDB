@@ -6,3 +6,4 @@ geoalchemy2
 pytz
 alembic
 shapely
+jsonschema<4.0
