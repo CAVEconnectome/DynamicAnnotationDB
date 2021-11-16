@@ -3,6 +3,7 @@ import logging
 from typing import List
 
 from emannotationschemas import get_schema
+from emannotationschemas.schemas.base import ReferenceAnnotation
 from emannotationschemas import models as em_models
 from emannotationschemas.flatten import flatten_dict
 from marshmallow import EXCLUDE
@@ -209,24 +210,13 @@ class DynamicAnnotationInterface:
             add additional columns to track CRUD operations on rows
         """
         existing_tables = self.check_table_is_unique(table_name)
-        reference_table = None
-        track_updates = None
-
         if table_metadata:
-            try:
-                reference_table = table_metadata.get("reference_table")
-            except AttributeError as e:
-                reference_table = None
-            try:
-                track_updates = table_metadata.get("track_target_id_updates")
-            except AttributeError as e:
-                track_updates = None
-
-            if reference_table:
-                reference_table = self._parse_reference_table_metadata(
-                    table_name, table_metadata, existing_tables
-                )
-                self.base.metadata.reflect()
+            reference_table, track_updates = self._parse_table_metadata_params(
+                schema_type, table_name, table_metadata, existing_tables
+            )
+        else:
+            reference_table = None
+            track_updates = None
 
         model = em_models.make_annotation_model(
             table_name, schema_type, table_metadata, with_crud_columns
@@ -262,6 +252,36 @@ class DynamicAnnotationInterface:
             f"Table: {table_name} created using {model} model at {creation_time}"
         )
         return table_name
+
+    def _parse_table_metadata_params(
+        self,
+        schema_type: str,
+        table_name: str,
+        table_metadata: dict,
+        existing_tables: list,
+    ):
+        reference_table = None
+        track_updates = None
+
+        for param, value in table_metadata.items():
+            if param is "reference_table":
+                Schema = get_schema(schema_type)
+                if not issubclass(Schema, ReferenceAnnotation):
+                    raise TypeError(
+                        "Reference table must be a ReferenceAnnotation schema type"
+                    )
+                if table_name is value:
+                    raise SelfReferenceTableError(
+                        f"{reference_table} must target a different table not {table_name}"
+                    )
+                if value not in existing_tables:
+                    raise TableNameNotFound(
+                        f"Reference table target: '{value}' does not exist"
+                    )
+                reference_table = value
+            elif param is "track_target_id_updates":
+                track_updates = value
+        return reference_table, track_updates
 
     def create_segmentation_table(
         self, annotation_table_name: str, schema_type: str, pcg_table_name: str
@@ -608,22 +628,6 @@ class DynamicAnnotationInterface:
         """
 
         return table_name in self._cached_tables
-
-    def _parse_reference_table_metadata(
-        self, table_name, table_metadata, existing_tables
-    ):
-        reference_table = table_metadata.get("reference_table")
-
-        if table_name is reference_table:
-            raise SelfReferenceTableError(
-                f"{reference_table} must target a different table not {table_name}"
-            )
-        if reference_table not in existing_tables:
-            raise TableNameNotFound(
-                f"Reference table target: '{existing_tables}' does not exist"
-            )
-
-        return reference_table
 
     def _load_table(self, table_name: str):
         """Load existing table into cached lookup dict instance
