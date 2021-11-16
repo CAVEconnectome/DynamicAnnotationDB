@@ -20,7 +20,7 @@ click==7.1.2
     # via flask
 deprecated==1.2.13
     # via redis
-emannotationschemas==3.5.0
+emannotationschemas==3.5.1
     # via -r requirements.in
 flask==1.1.4
     # via
