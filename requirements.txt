@@ -34,7 +34,7 @@ deprecated==1.2.13
     # via
     #   emannotationschemas
     #   redis
-emannotationschemas==3.5.2
+emannotationschemas==3.5.3
     # via -r requirements.in
 flask==1.1.4
     # via
