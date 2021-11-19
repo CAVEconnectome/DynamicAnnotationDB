@@ -335,28 +335,34 @@ class DynamicAnnotationInterface:
         return {"Created Successfully": True, "Table Name": model.__name__}
 
     def get_table_metadata(self, table_name: str):
-        metadata = (
+        result = (
             self.cached_session.query(AnnoMetadata)
             .filter(AnnoMetadata.table_name == table_name)
             .one()
         )
-        if not metadata:
+        if not result:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
             )
+        metadata = {
+            k: v for (k, v) in result.__dict__.items() if k != "_sa_instance_state"
+        }
         return metadata
 
     def get_segmentation_table_metadata(self, table_name: str, pcg_table_name: str):
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
-        metadata = (
+        result = (
             self.cached_session.query(SegmentationMetadata)
             .filter(SegmentationMetadata.table_name == seg_table_name)
-            .first()
+            .one()
         )
-        if not metadata:
+        if not result:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
             )
+        metadata = {
+            k: v for (k, v) in result.__dict__.items() if k != "_sa_instance_state"
+        }
         return metadata
 
     def create_reference_update_trigger(

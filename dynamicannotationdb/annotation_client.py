@@ -237,7 +237,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                 anno_data = anno.__dict__
                 anno_data["created"] = str(anno_data.get("created"))
                 anno_data["deleted"] = str(anno_data.get("deleted"))
-                anno_data.pop("_sa_instance_state", None)
+                anno_data = {
+                    k: v for (k, v) in anno_data.items() if k != "_sa_instance_state"
+                }               
                 data.append(anno_data)
 
             return schema.load(data, many=True)
