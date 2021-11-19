@@ -344,7 +344,7 @@ class DynamicAnnotationInterface:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
             )
-        return metadata.__dict__
+        return metadata
 
     def get_segmentation_table_metadata(self, table_name: str, pcg_table_name: str):
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
@@ -357,7 +357,7 @@ class DynamicAnnotationInterface:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
             )
-        return metadata.__dict__
+        return metadata
 
     def create_reference_update_trigger(
         self, table_name, description, reference_table, model
