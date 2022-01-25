@@ -159,8 +159,9 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             not ids_exist
         ):  # TODO replace this with a filter for ids that are missing from this list
             self.cached_session.add_all(segs)
+            seg_ids = [seg.id for seg in segs]
             self.commit_session()
-            return True
+            return seg_ids
         else:
             raise IdsAlreadyExists(f"Annotation IDs {ids} already linked in database ")
 
@@ -218,9 +219,10 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             SegmentationModel(**segmentation_data, id=anno.id)
             for segmentation_data, anno in zip(formatted_seg_data, annos)
         ]
+        ids = [anno.id for anno in annos]
         self.cached_session.add_all(segs)
         self.commit_session()
-        return True
+        return ids
 
     def update_linked_annotations(
         self, table_name: str, pcg_table_name: str, annotation: dict
@@ -260,6 +262,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
                 .filter(SegmentationModel.id == anno_id)
                 .all()
             )
+            update_map = {}
             for old_anno, old_seg in data:
                 if old_anno.superceded_id:
                     raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
@@ -271,9 +274,10 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
                 old_anno.deleted = deleted_time
                 old_anno.superceded_id = new_data.id
                 old_anno.valid = False
-
+                update_map[anno_id] = new_data.id
                 self.commit_session()
-                return f"id {anno_id} updated"
+                
+            return update_map
         except NoResultFound as e:
             return f"No result found for {anno_id}. Error: {e}"
 
@@ -309,6 +313,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         )
 
         if annotations:
+            deleted_ids = [annotation.id for annotation in annotations]
             deleted_time = datetime.datetime.now()
             for annotation in annotations:
                 annotation.deleted = deleted_time
@@ -316,4 +321,4 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             self.commit_session()
         else:
             return None
-        return True
+        return deleted_ids
