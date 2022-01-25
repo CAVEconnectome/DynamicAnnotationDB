@@ -87,13 +87,13 @@ def test_insert_annotation(annotation_client, annotation_metadata):
             "size": 1,
         }
     ]
-    is_committed = annotation_client.insert_annotations(table_name, test_data)
+    inserted_id = annotation_client.insert_annotations(table_name, test_data)
     annotation_client.cached_session.close()
 
-    assert is_committed == True
+    assert inserted_id == [1]
 
 
-def test_insert_reference__annotation(annotation_client, annotation_metadata):
+def test_insert_reference_annotation(annotation_client, annotation_metadata):
     table_name = "presynaptic_bouton_types"
 
     test_data = [
@@ -102,10 +102,10 @@ def test_insert_reference__annotation(annotation_client, annotation_metadata):
             "target_id": 1,
         }
     ]
-    is_committed = annotation_client.insert_annotations(table_name, test_data)
+    inserted_id = annotation_client.insert_annotations(table_name, test_data)
     annotation_client.cached_session.close()
 
-    assert is_committed == True
+    assert inserted_id == [1]
 
 
 def test_insert_another_annotation(annotation_client, annotation_metadata):
@@ -119,10 +119,10 @@ def test_insert_another_annotation(annotation_client, annotation_metadata):
             "size": 1,
         }
     ]
-    is_committed = annotation_client.insert_annotations(table_name, test_data)
+    inserted_id = annotation_client.insert_annotations(table_name, test_data)
     annotation_client.cached_session.close()
 
-    assert is_committed == True
+    assert inserted_id == [2]
 
 
 def test_get_annotation(annotation_client, annotation_metadata):
@@ -143,15 +143,15 @@ def test_update_annotation(annotation_client, annotation_metadata):
         "ctr_pt": {"position": [121, 123, 1232]},
         "post_pt": {"position": [555, 555, 5555]},
     }
-    is_updated = annotation_client.update_annotation(table_name, updated_test_data)
+    update_map = annotation_client.update_annotation(table_name, updated_test_data)
     annotation_client.cached_session.close()
 
-    assert is_updated == "id 1 updated"
+    assert update_map == {1:3}
     test_data = annotation_client.get_annotations(table_name, [1])
     assert test_data[0]["superceded_id"] == 3
 
 
-def test_get_reference__annotation(annotation_client, annotation_metadata):
+def test_get_reference_annotation(annotation_client, annotation_metadata):
     table_name = "presynaptic_bouton_types"
     test_data = annotation_client.get_annotations(table_name, [1])
     logging.info(test_data)
@@ -168,4 +168,4 @@ def test_delete_annotation(annotation_client, annotation_metadata):
     is_deleted = annotation_client.delete_annotation(table_name, ids_to_delete)
     annotation_client.cached_session.close()
 
-    assert is_deleted == True
+    assert is_deleted == ids_to_delete
