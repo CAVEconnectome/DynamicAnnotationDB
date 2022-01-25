@@ -177,7 +177,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         insertion_limit = 10_000
 
         if len(annotations) > insertion_limit:
-            raise AnnotationInsertLimitExceeded(len(annotations), insertion_limit)
+            raise AnnotationInsertLimitExceeded(insertion_limit, len(annotations))
 
         schema_type = self.get_table_schema(table_name)
         AnnotationModel = self._cached_table(table_name)
@@ -201,8 +201,10 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         ]
 
         self.cached_session.add_all(annos)
+        self.cached_session.flush()
+        anno_ids = [anno.id for anno in annos]
         self.commit_session()
-        return True
+        return anno_ids
 
     def get_annotations(self, table_name: str, annotation_ids: List[int]) -> List[dict]:
         """Get a set of annotations by ID
@@ -239,7 +241,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                 anno_data["deleted"] = str(anno_data.get("deleted"))
                 anno_data = {
                     k: v for (k, v) in anno_data.items() if k != "_sa_instance_state"
-                }               
+                }
                 data.append(anno_data)
 
             return schema.load(data, many=True)
@@ -297,10 +299,10 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             old_anno.deleted = deleted_time
             old_anno.superceded_id = new_data.id
             old_anno.valid = False
-
+            update_map = {anno_id: new_data.id}
             self.commit_session()
 
-            return f"id {anno_id} updated"
+            return update_map
         except NoResultFound as e:
             return f"No result found for {anno_id}. Error: {e}"
 
@@ -327,12 +329,14 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             .filter(AnnotationModel.id.in_(annotation_ids))
             .all()
         )
+        deleted_ids = []
         if annotations:
             deleted_time = datetime.datetime.now()
             for annotation in annotations:
                 annotation.deleted = deleted_time
                 annotation.valid = False
+                deleted_ids.append(annotation.id)
             self.commit_session()
         else:
             return None
-        return True
+        return deleted_ids
