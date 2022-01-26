@@ -264,7 +264,7 @@ class DynamicAnnotationInterface:
         track_updates = None
 
         for param, value in table_metadata.items():
-            if param is "reference_table":
+            if param == "reference_table":
                 Schema = get_schema(schema_type)
                 if not issubclass(Schema, ReferenceAnnotation):
                     raise TypeError(
@@ -279,7 +279,7 @@ class DynamicAnnotationInterface:
                         f"Reference table target: '{value}' does not exist"
                     )
                 reference_table = value
-            elif param is "track_target_id_updates":
+            elif param == "track_target_id_updates":
                 track_updates = value
         return reference_table, track_updates
 
