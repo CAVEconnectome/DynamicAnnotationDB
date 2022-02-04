@@ -223,6 +223,10 @@ class DynamicAnnotationInterface:
         )
 
         if reference_table and track_updates:
+            reference_table_name = self.get_table_sql_metadata(reference_table)
+            logging.info(
+                f"{table_name} is targeting reference table: {reference_table_name}"
+            )
             description = self.create_reference_update_trigger(
                 table_name, description, reference_table, model
             )
