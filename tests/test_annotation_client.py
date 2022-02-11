@@ -146,7 +146,7 @@ def test_update_annotation(annotation_client, annotation_metadata):
     update_map = annotation_client.update_annotation(table_name, updated_test_data)
     annotation_client.cached_session.close()
 
-    assert update_map == {1:3}
+    assert update_map == {1: 3}
     test_data = annotation_client.get_annotations(table_name, [1])
     assert test_data[0]["superceded_id"] == 3
 
@@ -159,6 +159,33 @@ def test_get_reference_annotation(annotation_client, annotation_metadata):
 
     assert test_data[0]["id"] == 1
     assert test_data[0]["target_id"] == 3
+
+
+def test_update_reference_annotation(annotation_client, annotation_metadata):
+    table_name = "presynaptic_bouton_types"
+
+    test_data = {
+        "id": 1,
+        "bouton_type": "basmati",
+        "target_id": 3,
+    }
+
+    update_map = annotation_client.update_annotation(table_name, test_data)
+    annotation_client.cached_session.close()
+
+    assert update_map == {1: 1}
+    test_data = annotation_client.get_annotations(table_name, [1])
+    assert test_data[0]["bouton_type"] == "basmati"
+
+
+def test_delete_reference_annotation(annotation_client, annotation_metadata):
+    table_name = "presynaptic_bouton_types"
+
+    ids_to_delete = [1]
+    is_deleted = annotation_client.delete_annotation(table_name, ids_to_delete)
+    annotation_client.cached_session.close()
+
+    assert is_deleted == ids_to_delete
 
 
 def test_delete_annotation(annotation_client, annotation_metadata):
