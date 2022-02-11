@@ -1,6 +1,12 @@
 class TableNameNotFound(KeyError):
     """Table name is not found in the Metadata table"""
 
+    def __init__(self, table_name: str):
+        self.table_name = table_name
+
+    def __str__(self):
+        return f"No table named '{self.table_name}' exists."
+
 
 class TableAlreadyExists(KeyError):
     """Table name already exists in the Metadata table"""
