@@ -275,20 +275,28 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         schema_type = self.get_table_schema(table_name)
 
         AnnotationModel = self._cached_table(table_name)
-
         new_annotation, __ = self._get_flattened_schema_data(schema_type, annotation)
-
-        new_annotation["created"] = datetime.datetime.now()
-        new_annotation["valid"] = True
+        if not hasattr(AnnotationModel, "target_id"):
+            new_annotation["created"] = datetime.datetime.now()
+            new_annotation["valid"] = True
 
         new_data = AnnotationModel(**new_annotation)
+
         try:
             old_anno = (
                 self.cached_session.query(AnnotationModel)
                 .filter(AnnotationModel.id == anno_id)
                 .one()
             )
-
+        except NoResultFound as e:
+            raise f"No result found for {anno_id}. Error: {e}" from e
+        if hasattr(AnnotationModel, "target_id"):
+            new_data_map = self.get_automap_items(new_data)
+            for column_name, value in new_data_map.items():
+                setattr(old_anno, column_name, value)
+            old_anno.valid = True
+            update_map = {anno_id: old_anno.id}
+        else:
             if old_anno.superceded_id:
                 raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
 
@@ -300,11 +308,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
             old_anno.superceded_id = new_data.id
             old_anno.valid = False
             update_map = {anno_id: new_data.id}
-            self.commit_session()
+        self.commit_session()
 
-            return update_map
-        except NoResultFound as e:
-            return f"No result found for {anno_id}. Error: {e}"
+        return update_map
 
     def delete_annotation(self, table_name: str, annotation_ids: List[int]):
         """Delete annotations by ids
@@ -332,9 +338,13 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         deleted_ids = []
         if annotations:
             deleted_time = datetime.datetime.now()
+
             for annotation in annotations:
-                annotation.deleted = deleted_time
-                annotation.valid = False
+                if hasattr(AnnotationModel, "target_id"):
+                    self.cached_session.delete(annotation)
+                else:
+                    annotation.deleted = deleted_time
+                    annotation.valid = False
                 deleted_ids.append(annotation.id)
             self.commit_session()
         else:
