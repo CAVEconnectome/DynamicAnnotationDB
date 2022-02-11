@@ -348,10 +348,12 @@ class DynamicAnnotationInterface:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
             )
-        metadata = {
+        return self.get_automap_items(result)
+
+    def get_automap_items(self, result):
+        return {
             k: v for (k, v) in result.__dict__.items() if k != "_sa_instance_state"
         }
-        return metadata
 
     def get_segmentation_table_metadata(self, table_name: str, pcg_table_name: str):
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
@@ -364,10 +366,7 @@ class DynamicAnnotationInterface:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
             )
-        metadata = {
-            k: v for (k, v) in result.__dict__.items() if k != "_sa_instance_state"
-        }
-        return metadata
+        return self.get_automap_items(result)
 
     def create_reference_update_trigger(
         self, table_name, description, reference_table, model
@@ -526,8 +525,8 @@ class DynamicAnnotationInterface:
         try:
             self._load_table(table_name)
             return self._cached_tables[table_name]
-        except TableNameNotFound as error:
-            logging.error(f"Cannot load table {error}")
+        except KeyError as error:
+           raise TableNameNotFound(table_name)
 
     def _get_table_row_count(self, table_name: str, filter_valid: bool = False) -> int:
         model = self._cached_table(table_name)
