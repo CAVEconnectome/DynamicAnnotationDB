@@ -1,0 +1,54 @@
+import logging
+from sqlalchemy import Table
+
+
+def test_get_table_metadata(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+    schema_type = annotation_metadata["schema_type"]
+    metadata = dadb_interface.database.get_table_metadata(table_name)
+    logging.info(metadata)
+    assert metadata["schema_type"] == schema_type
+    assert metadata["table_name"] == "anno_test"
+    assert metadata["user_id"] == "foo@bar.com"
+    assert metadata["description"] == "some description"
+    assert metadata["voxel_resolution_x"] == 4.0
+
+
+def test_get_table_sql_metadata(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    sql_metadata = dadb_interface.database.get_table_sql_metadata(table_name)
+    logging.info(sql_metadata)
+    assert isinstance(sql_metadata, Table)
+
+
+def test_get_model_columns(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    model_columns = dadb_interface.database._get_model_columns(table_name)
+    logging.info(model_columns)
+    assert isinstance(model_columns, list)
+
+
+def test__get_existing_table_ids(dadb_interface):
+    table_names = dadb_interface.database._get_existing_table_names()
+    assert isinstance(table_names, list)
+
+
+def test_get_annotation_table_size(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    table_size = dadb_interface.database.get_annotation_table_size(table_name)
+    assert table_size == 3
+
+
+def test_load_table(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+    is_loaded = dadb_interface.database._load_table(table_name)
+
+    assert is_loaded is True
+
+    table_name = "non_existing_table"
+
+    is_loaded = dadb_interface.database._load_table(table_name)
+    assert is_loaded is False
