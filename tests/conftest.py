@@ -7,7 +7,7 @@ import docker
 import psycopg2
 import pytest
 
-from dynamicannotationdb import database
+from dynamicannotationdb import DynamicAnnotationInterface
 
 logging.basicConfig(level=logging.DEBUG)
 test_logger = logging.getLogger()
