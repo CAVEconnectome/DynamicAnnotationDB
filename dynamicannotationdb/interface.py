@@ -99,13 +99,15 @@ class DynamicAnnotationInterface:
     @property
     def annotation(self) -> DynamicAnnotationClient:
         if not self._annotation:
-            self._annotation = DynamicAnnotationClient(self._url, self._aligned_volume)
+            self._annotation = DynamicAnnotationClient(
+                self._url, self._aligned_volume)
         return self._annotation
 
     @property
     def database(self) -> DynamicAnnotationDB:
         if not self._database:
-            self._database = DynamicAnnotationDB(self._url)
+            self._database = DynamicAnnotationDB(
+                self._url, self._aligned_volume)
         return self._database
 
     @property
