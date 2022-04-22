@@ -36,7 +36,7 @@ def database_metadata() -> dict:
     yield {
         "postgis_docker_image": "postgis/postgis:13-master",
         "db_host": "localhost",
-        "sql_uri": "postgresql://postgres:annodb@localhost:5432/test_volume",
+        "sql_uri": "postgresql://postgres:postgres@localhost:5432/test_volume",
     }
 
 
