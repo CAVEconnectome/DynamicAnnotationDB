@@ -1,57 +1,105 @@
 import datetime
+import logging
 from typing import List
 
-from emannotationschemas import get_flat_schema
-from emannotationschemas.flatten import flatten_dict
 from marshmallow import INCLUDE
-from sqlalchemy.orm.exc import NoResultFound
 
-from dynamicannotationdb.errors import (
+from .database import DynamicAnnotationDB
+from .errors import (
     AnnotationInsertLimitExceeded,
     IdsAlreadyExists,
     UpdateAnnotationError,
 )
-from dynamicannotationdb.interface import DynamicAnnotationInterface
-from dynamicannotationdb.key_utils import build_segmentation_table_name
-from dynamicannotationdb.models import SegmentationMetadata
+from .key_utils import build_segmentation_table_name
+from .models import SegmentationMetadata
+from .schema import DynamicSchemaClient
 
 
-class DynamicMaterializationClient(DynamicAnnotationInterface):
-    def __init__(self, aligned_volume, sql_base_uri):
-        sql_uri = self.create_or_select_database(aligned_volume, sql_base_uri)
-        super().__init__(sql_uri)
+class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
+    def __init__(self, url: str, aligned_volume: str = None) -> None:
+        super().__init__(url, aligned_volume)
 
-        self.aligned_volume = aligned_volume
-        self._table = None
-        self._cached_schemas = {}
+    def create_segmentation_table(
+        self,
+        table_name: str,
+        schema_type: str,
+        segmentation_source: str,
+        table_metadata: dict = None,
+        with_crud_columns: bool = False,
+    ):
+        """Create a segmentation table with the primary key as foreign key
+        to the annotation table.
 
-    @property
-    def table(self):
-        return self._table
+        Parameters
+        ----------
+        table_name : str
+            Name of annotation table to link to.
+        schema_type : str
+            schema type
+        segmentation_source : str
+            name of segmentation data source, used to create table name.
+        table_metadata : dict, optional
+            metadata to extend table behavior, by default None
+        with_crud_columns : bool, optional
+            add additional columns to track CRUD operations on rows, by default False
 
-    def load_table(self, table_name: str):
-        self._table = self._cached_table(table_name)
-        return self._table
+        Returns
+        -------
+        str
+            name of segmentation table.
+        """
+        segmentation_table_name = build_segmentation_table_name(
+            table_name, segmentation_source
+        )
 
-    def create_and_attach_seg_table(self, table_name: str, pcg_table_name: str):
+        self._check_table_is_unique(segmentation_table_name)
 
-        schema_type = self.get_table_schema(table_name)
-        return self.create_segmentation_table(table_name, schema_type, pcg_table_name)
+        SegmentationModel = self.create_segmentation_model(
+            table_name,
+            schema_type,
+            segmentation_source,
+            table_metadata,
+            with_crud_columns,
+        )
 
-    def drop_table(self, table_name: str) -> bool:
-        return self._drop_table(table_name)
+        if (
+            not self.cached_session.query(SegmentationMetadata)
+            .filter(SegmentationMetadata.table_name == segmentation_table_name)
+            .scalar()
+        ):
+            SegmentationModel.__table__.create(bind=self._engine, checkfirst=True)
+            creation_time = datetime.datetime.utcnow()
+            metadata_dict = {
+                "annotation_table": table_name,
+                "schema_type": schema_type,
+                "table_name": segmentation_table_name,
+                "valid": True,
+                "created": creation_time,
+                "pcg_table_name": segmentation_source,
+            }
+
+            seg_metadata = SegmentationMetadata(**metadata_dict)
+            try:
+                self.cached_session.add(seg_metadata)
+                self.commit_session()
+            except Exception as e:
+                logging.error(f"SQL ERROR: {e}")
+
+        return segmentation_table_name
 
     def get_linked_tables(self, table_name: str, pcg_table_name: str) -> List:
         try:
-            linked_tables = (
+            return (
                 self.cached_session.query(SegmentationMetadata)
                 .filter(SegmentationMetadata.annotation_table == table_name)
                 .filter(SegmentationMetadata.pcg_table_name == pcg_table_name)
                 .all()
             )
-            return linked_tables
+
         except Exception as e:
-            raise AttributeError(f"No table found with name '{table_name}'. Error: {e}")
+            raise AttributeError(
+                f"No table found with name '{table_name}'. Error: {e}"
+            ) from e
 
     def get_linked_annotations(
         self, table_name: str, pcg_table_name: str, annotation_ids: List[int]
@@ -73,8 +121,8 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             list of annotation data dicts
         """
 
-        schema_type = self.get_table_schema(table_name)
-
+        metadata = self.get_table_metadata(table_name)
+        schema_type = metadata["schema_type"]
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
         AnnotationModel = self._cached_table(table_name)
         SegmentationModel = self._cached_table(seg_table_name)
@@ -82,11 +130,11 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         annotations = (
             self.cached_session.query(AnnotationModel, SegmentationModel)
             .join(SegmentationModel, SegmentationModel.id == AnnotationModel.id)
-            .filter(AnnotationModel.id.in_([x for x in annotation_ids]))
+            .filter(AnnotationModel.id.in_(list(annotation_ids)))
             .all()
         )
 
-        FlatSchema = get_flat_schema(schema_type)
+        FlatSchema = self.get_flattened_schema(schema_type)
         schema = FlatSchema(unknown=INCLUDE)
 
         data = []
@@ -108,10 +156,10 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         return schema.load(data, many=True)
 
     def insert_linked_segmentation(
-        self, table_name: str, pcg_table_name: str, segmentations: List[dict]
+        self, table_name: str, pcg_table_name: str, segmentation_data: List[dict]
     ):
-        """Insert segmentations by linking to annotation ids. Limited to 10,000 segmentations.
-        If more consider using a bulk insert script.
+        """Insert segmentation data by linking to annotation ids.
+        Limited to 10,000 inserts. If more consider using a bulk insert script.
 
         Parameters
         ----------
@@ -119,24 +167,25 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
             name of annotation table
         pcg_table_name: str
             name of chunked graph reference table
-        segmentations : List[dict]
+        segmentation_data : List[dict]
             List of dictionaries of single segmentation data.
         """
         insertion_limit = 10_000
 
-        if len(segmentations) > insertion_limit:
-            raise AnnotationInsertLimitExceeded(len(segmentations), insertion_limit)
+        if len(segmentation_data) > insertion_limit:
+            raise AnnotationInsertLimitExceeded(len(segmentation_data), insertion_limit)
 
-        schema_type = self.get_table_schema(table_name)
+        metadata = self.get_table_metadata(table_name)
+        schema_type = metadata["schema_type"]
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
 
         SegmentationModel = self._cached_table(seg_table_name)
         formatted_seg_data = []
 
-        _, segmentation_schema = self._get_flattened_schema(schema_type)
+        _, segmentation_schema = self._split_flattened_schema(schema_type)
 
-        for segmentation in segmentations:
-            segmentation_data = flatten_dict(segmentation)
+        for segmentation in segmentation_data:
+            segmentation_data = self.flattened_schema_data(segmentation)
             flat_data = self._map_values_to_schema(
                 segmentation_data, segmentation_schema
             )
@@ -151,25 +200,23 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         ids = [data["id"] for data in formatted_seg_data]
         q = self.cached_session.query(SegmentationModel).filter(
-            SegmentationModel.id.in_([id for id in ids])
+            SegmentationModel.id.in_(list(ids))
         )
+
         ids_exist = self.cached_session.query(q.exists()).scalar()
 
-        if (
-            not ids_exist
-        ):  # TODO replace this with a filter for ids that are missing from this list
-            self.cached_session.add_all(segs)
-            seg_ids = [seg.id for seg in segs]
-            self.commit_session()
-            return seg_ids
-        else:
+        if ids_exist:
             raise IdsAlreadyExists(f"Annotation IDs {ids} already linked in database ")
+        self.cached_session.add_all(segs)
+        seg_ids = [seg.id for seg in segs]
+        self.commit_session()
+        return seg_ids
 
     def insert_linked_annotations(
         self, table_name: str, pcg_table_name: str, annotations: List[dict]
     ):
-        """Insert annotations by type and schema. Limited to 10,000 annotations. If more consider
-        using a bulk insert script.
+        """Insert annotations by type and schema. Limited to 10,000
+        annotations. If more consider using a bulk insert script.
 
         Parameters
         ----------
@@ -185,7 +232,8 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         if len(annotations) > insertion_limit:
             raise AnnotationInsertLimitExceeded(len(annotations), insertion_limit)
 
-        schema_type = self.get_table_schema(table_name)
+        metadata = self.get_table_metadata(table_name)
+        schema_type = metadata["schema_type"]
 
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
 
@@ -194,25 +242,29 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         AnnotationModel = self._cached_table(table_name)
         SegmentationModel = self._cached_table(seg_table_name)
+        logging.info(f"{AnnotationModel.__table__.columns}")
+        logging.info(f"{SegmentationModel.__table__.columns}")
 
         for annotation in annotations:
 
-            annotation_data, segmentation_data = self._get_flattened_schema_data(
+            anno_data, seg_data = self._split_flattened_schema_data(
                 schema_type, annotation
             )
             if annotation.get("id"):
-                annotation_data["id"] = annotation["id"]
-
-            annotation_data["created"] = datetime.datetime.now()
-
-            formatted_anno_data.append(annotation_data)
-            formatted_seg_data.append(segmentation_data)
-
-        annos = [
-            AnnotationModel(**annotation_data)
-            for annotation_data in formatted_anno_data
-        ]
-
+                anno_data["id"] = annotation["id"]
+            if hasattr(AnnotationModel, "created"):
+                anno_data["created"] = datetime.datetime.now()
+            anno_data["valid"] = True
+            formatted_anno_data.append(anno_data)
+            formatted_seg_data.append(seg_data)
+        logging.info(f"DATA TO BE INSERTED: {formatted_anno_data} {formatted_seg_data}")
+        try:
+            annos = [
+                AnnotationModel(**annotation_data)
+                for annotation_data in formatted_anno_data
+            ]
+        except Exception as e:
+            raise e
         self.cached_session.add_all(annos)
         self.cached_session.flush()
         segs = [
@@ -228,7 +280,7 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         self, table_name: str, pcg_table_name: str, annotation: dict
     ):
         """Updates an annotation by inserting a new row. The original annotation
-        will refer to the new row with a superceded_id. Does not update inplace.
+        will refer to the new row with a superseded_id. Does not update inplace.
 
         Parameters
         ----------
@@ -244,42 +296,41 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
 
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
 
-        schema_type = self.get_table_schema(table_name)
+        metadata = self.get_table_metadata(table_name)
+        schema_type = metadata["schema_type"]
 
         AnnotationModel = self._cached_table(table_name)
         SegmentationModel = self._cached_table(seg_table_name)
 
-        new_annotation, __ = self._get_flattened_schema_data(schema_type, annotation)
+        new_annotation, __ = self._split_flattened_schema_data(schema_type, annotation)
 
         new_annotation["created"] = datetime.datetime.now()
         new_annotation["valid"] = True
 
         new_data = AnnotationModel(**new_annotation)
-        try:
-            data = (
-                self.cached_session.query(AnnotationModel, SegmentationModel)
-                .filter(AnnotationModel.id == anno_id)
-                .filter(SegmentationModel.id == anno_id)
-                .all()
-            )
-            update_map = {}
-            for old_anno, old_seg in data:
-                if old_anno.superceded_id:
-                    raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
 
-                self.cached_session.add(new_data)
-                self.cached_session.flush()
+        data = (
+            self.cached_session.query(AnnotationModel, SegmentationModel)
+            .filter(AnnotationModel.id == anno_id)
+            .filter(SegmentationModel.id == anno_id)
+            .all()
+        )
+        update_map = {}
+        for old_anno, old_seg in data:
+            if old_anno.superceded_id:
+                raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
 
-                deleted_time = datetime.datetime.now()
-                old_anno.deleted = deleted_time
-                old_anno.superceded_id = new_data.id
-                old_anno.valid = False
-                update_map[anno_id] = new_data.id
-                self.commit_session()
-                
-            return update_map
-        except NoResultFound as e:
-            return f"No result found for {anno_id}. Error: {e}"
+            self.cached_session.add(new_data)
+            self.cached_session.flush()
+
+            deleted_time = datetime.datetime.now()
+            old_anno.deleted = deleted_time
+            old_anno.superceded_id = new_data.id
+            old_anno.valid = False
+            update_map[anno_id] = new_data.id
+            self.commit_session()
+
+        return update_map
 
     def delete_linked_annotation(
         self, table_name: str, pcg_table_name: str, annotation_ids: List[int]
@@ -308,17 +359,16 @@ class DynamicMaterializationClient(DynamicAnnotationInterface):
         annotations = (
             self.cached_session.query(AnnotationModel)
             .join(SegmentationModel, SegmentationModel.id == AnnotationModel.id)
-            .filter(AnnotationModel.id.in_([x for x in annotation_ids]))
+            .filter(AnnotationModel.id.in_(list(annotation_ids)))
             .all()
         )
 
-        if annotations:
-            deleted_ids = [annotation.id for annotation in annotations]
-            deleted_time = datetime.datetime.now()
-            for annotation in annotations:
-                annotation.deleted = deleted_time
-                annotation.valid = False
-            self.commit_session()
-        else:
+        if not annotations:
             return None
+        deleted_ids = [annotation.id for annotation in annotations]
+        deleted_time = datetime.datetime.now()
+        for annotation in annotations:
+            annotation.deleted = deleted_time
+            annotation.valid = False
+        self.commit_session()
         return deleted_ids

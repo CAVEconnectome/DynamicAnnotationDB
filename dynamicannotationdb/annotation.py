@@ -3,26 +3,22 @@ import logging
 from typing import List
 
 from marshmallow import INCLUDE
-from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy import DDL, event
 
-from dynamicannotationdb.errors import (
+from .database import DynamicAnnotationDB
+from .errors import (
     AnnotationInsertLimitExceeded,
     NoAnnotationsFoundWithID,
     UpdateAnnotationError,
 )
-from dynamicannotationdb.interface import DynamicAnnotationInterface
-from dynamicannotationdb.models import AnnoMetadata
+from .models import AnnoMetadata
+from .schema import DynamicSchemaClient
 
 
-class DynamicAnnotationClient(DynamicAnnotationInterface):
-    def __init__(self, aligned_volume, sql_base_uri):
-        sql_uri = self.create_or_select_database(aligned_volume, sql_base_uri)
-        super().__init__(sql_uri)
-
-        self.aligned_volume = aligned_volume
-
+class DynamicAnnotationClient(DynamicAnnotationDB, DynamicSchemaClient):
+    def __init__(self, url: str = None, aligned_volume: str = None) -> None:
+        super().__init__(url, aligned_volume)
         self._table = None
-        self._cached_schemas = {}
 
     @property
     def table(self):
@@ -55,20 +51,20 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         voxel_resolution_z: float,
         table_metadata: dict = None,
         flat_segmentation_source: str = None,
+        with_crud_columns: bool = True,
     ):
-        r"""Create a new annotation table
+        r"""Create new annotation table unless already exists
 
         Parameters
         ----------
         table_name : str
-            name of new table
-
+            name of table
         schema_type : str
-            type of schema for that table
+            Type of schema to use, must be a valid type from EMAnnotationSchemas
 
         description: str
-            a string with a human readable explanation of
-            what is in the table. Including who made it
+            a string with a human-readable explanation of
+            what is in the table. Including whom made it
             and any information that helps interpret the fields
             of the annotations.
 
@@ -84,33 +80,105 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         voxel_resolution_z: float
             voxel_resolution of this annotation table's point in z (typically nm)
 
-
         table_metadata: dict
-            metadata for table
 
         flat_segmentation_source: str
             a path to a segmentation source associated with this table
              i.e. 'precomputed:\\gs:\\my_synapse_seg\example1'
 
-        Returns
-        -------
-        str
-           description of table at creation time
+        with_crud_columns: bool
+            add additional columns to track CRUD operations on rows
         """
-        # TODO: check that schemas that are reference schemas
-        # have a reference_table in their metadata
-        # TODO create table_metadata schema
-        return self.create_annotation_table(
+        existing_tables = self._check_table_is_unique(table_name)
+
+        if table_metadata:
+            reference_table, track_updates = self._parse_schema_metadata_params(
+                schema_type, table_name, table_metadata, existing_tables
+            )
+        else:
+            reference_table = None
+            track_updates = None
+
+        AnnotationModel = self.create_annotation_model(
             table_name,
             schema_type,
-            description,
-            user_id,
-            voxel_resolution_x=voxel_resolution_x,
-            voxel_resolution_y=voxel_resolution_y,
-            voxel_resolution_z=voxel_resolution_z,
             table_metadata=table_metadata,
-            flat_segmentation_source=flat_segmentation_source,
+            with_crud_columns=with_crud_columns,
         )
+        if hasattr(AnnotationModel, "target_id") and reference_table:
+
+            reference_table_name = self.get_table_sql_metadata(reference_table)
+            logging.info(
+                f"{table_name} is targeting reference table: {reference_table_name}"
+            )
+            if track_updates:
+                self.create_reference_update_trigger(
+                    table_name, reference_table, AnnotationModel
+                )
+                description += (
+                    f" [Note: This table '{AnnotationModel.__name__}' will update the 'target_id' "
+                    f"foreign_key when updates are made to the '{reference_table}' table] "
+                )
+
+        self.base.metadata.tables[AnnotationModel.__name__].create(bind=self.engine)
+        creation_time = datetime.datetime.now()
+
+        metadata_dict = {
+            "description": description,
+            "user_id": user_id,
+            "reference_table": reference_table,
+            "schema_type": schema_type,
+            "table_name": table_name,
+            "valid": True,
+            "created": creation_time,
+            "flat_segmentation_source": flat_segmentation_source,
+            "voxel_resolution_x": voxel_resolution_x,
+            "voxel_resolution_y": voxel_resolution_y,
+            "voxel_resolution_z": voxel_resolution_z,
+        }
+
+        logging.info(f"Metadata for table: {table_name} is {metadata_dict}")
+        anno_metadata = AnnoMetadata(**metadata_dict)
+        self.cached_session.add(anno_metadata)
+        self.commit_session()
+        logging.info(
+            f"Table: {table_name} created using {AnnotationModel} model at {creation_time}"
+        )
+        return table_name
+
+    def create_reference_update_trigger(self, table_name, reference_table, model):
+        func_name = f"{table_name}_update_reference_id"
+        func = DDL(
+            f"""
+                    CREATE or REPLACE function {func_name}()
+                    returns TRIGGER
+                    as $func$
+                    begin
+                        update {table_name} ref
+                        set target_id = new.superceded_id
+                        where ref.target_id = old.id;
+                        return new;
+                    end;
+                    $func$ language plpgsql;
+                    """
+        )
+        trigger = DDL(
+            f"""CREATE TRIGGER update_{table_name}_target_id AFTER UPDATE ON {reference_table}
+                    FOR EACH ROW EXECUTE PROCEDURE {func_name}();"""
+        )
+
+        event.listen(
+            model.__table__,
+            "after_create",
+            func.execute_if(dialect="postgresql"),
+        )
+
+        event.listen(
+            model.__table__,
+            "after_create",
+            trigger.execute_if(dialect="postgresql"),
+        )
+        return True
 
     def delete_table(self, table_name: str) -> bool:
         """Marks a table for deletion, which will
@@ -136,22 +204,6 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         metadata.deleted = datetime.datetime.now()
         self.commit_session()
         return True
-
-    def drop_table(self, table_name: str) -> bool:
-        """Drop a table, actually removes it from the database
-        along with segmentation tables associated with it
-
-        Parameters
-        ----------
-        table_name : str
-            name of table to drop
-
-        Returns
-        -------
-        bool
-            whether drop was successful
-        """
-        return self._drop_table(table_name)
 
     def insert_annotations(self, table_name: str, annotations: List[dict]):
         """Insert some annotations.
@@ -179,13 +231,15 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
         if len(annotations) > insertion_limit:
             raise AnnotationInsertLimitExceeded(insertion_limit, len(annotations))
 
-        schema_type = self.get_table_schema(table_name)
+        metadata = self.get_table_metadata(table_name)
+        schema_type = metadata["schema_type"]
+
         AnnotationModel = self._cached_table(table_name)
 
         formatted_anno_data = []
         for annotation in annotations:
 
-            annotation_data, __ = self._get_flattened_schema_data(
+            annotation_data, __ = self._split_flattened_schema_data(
                 schema_type, annotation
             )
             if annotation.get("id"):
@@ -225,12 +279,14 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         annotations = (
             self.cached_session.query(AnnotationModel)
-            .filter(AnnotationModel.id.in_([x for x in annotation_ids]))
+            .filter(AnnotationModel.id.in_(list(annotation_ids)))
             .all()
         )
 
-        schema_type = self.get_table_schema(table_name)
-        anno_schema, __ = self._get_flattened_schema(schema_type)
+        metadata = self.get_table_metadata(table_name)
+        schema_type = metadata["schema_type"]
+
+        anno_schema, __ = self._split_flattened_schema(schema_type)
         schema = anno_schema(unknown=INCLUDE)
         try:
             data = []
@@ -248,9 +304,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         except Exception as e:
             logging.exception(e)
-            raise NoAnnotationsFoundWithID(annotation_ids)
+            raise NoAnnotationsFoundWithID(annotation_ids) from e
 
-    def update_annotation(self, table_name: str, annotation: dict):
+    def update_annotation(self, table_name: str, annotation: dict) -> str:
         """Update an annotation
 
         Parameters
@@ -262,22 +318,26 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         Returns
         -------
-        [type]
-            [description]
+        dict:
+            dict mapping of old id : new id values
 
         Raises
         ------
-        TODO: make this raise an exception rather than return strings
+        NoAnnotationsFoundWithID:
+            Raises if no Ids to be updated are found in the table.
         """
         anno_id = annotation.get("id")
         if not anno_id:
             return "Annotation requires an 'id' to update targeted row"
-        schema_type = self.get_table_schema(table_name)
+        metadata = self.get_table_metadata(table_name)
+        schema_type = metadata["schema_type"]
 
         AnnotationModel = self._cached_table(table_name)
-        new_annotation, __ = self._get_flattened_schema_data(schema_type, annotation)
-        if not hasattr(AnnotationModel, "target_id"):
+        new_annotation, __ = self._split_flattened_schema_data(schema_type, annotation)
+
+        if hasattr(AnnotationModel, "created"):
             new_annotation["created"] = datetime.datetime.now()
+        if hasattr(AnnotationModel, "valid"):
             new_annotation["valid"] = True
 
         new_data = AnnotationModel(**new_annotation)
@@ -288,7 +348,7 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
                 .filter(AnnotationModel.id == anno_id)
                 .one()
             )
-        except NoResultFound as e:
+        except NoAnnotationsFoundWithID as e:
             raise f"No result found for {anno_id}. Error: {e}" from e
         if hasattr(AnnotationModel, "target_id"):
             new_data_map = self.get_automap_items(new_data)
@@ -312,7 +372,9 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         return update_map
 
-    def delete_annotation(self, table_name: str, annotation_ids: List[int]):
+    def delete_annotation(
+        self, table_name: str, annotation_ids: List[int]
+    ) -> List[int]:
         """Delete annotations by ids
 
         Parameters
@@ -324,9 +386,8 @@ class DynamicAnnotationClient(DynamicAnnotationInterface):
 
         Returns
         -------
-
-        Raises
-        ------
+        List[int]:
+            List of ids that were marked as deleted and no longer valid.
         """
         AnnotationModel = self._cached_table(table_name)
 

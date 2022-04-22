@@ -1,16 +1,15 @@
-from sqlalchemy import (
-    Column,
-    Boolean,
-    String,
-    UniqueConstraint,
-    Integer,
-    DateTime,
-    Text,
-    ForeignKey,
-    Float,
-    CheckConstraint,
-)
 from emannotationschemas.models import Base
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 
 
 class AnnoMetadata(Base):
@@ -48,9 +47,11 @@ class SegmentationMetadata(Base):
 
 class CombinedTableMetadata(Base):
     __tablename__ = "combined_table_metadata"
-    __table_args__ = (CheckConstraint(
-        "reference_table <> annotation_table", name="not_self_referenced"
-    ),)
+    __table_args__ = (
+        CheckConstraint(
+            "reference_table <> annotation_table", name="not_self_referenced"
+        ),
+    )
 
     id = Column(Integer, primary_key=True)
     reference_table = Column(

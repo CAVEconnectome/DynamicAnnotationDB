@@ -3,9 +3,11 @@ class TableNameNotFound(KeyError):
 
     def __init__(self, table_name: str):
         self.table_name = table_name
+        self.message = f"No table named '{self.table_name}' exists."
+        super().__init__(self.message)
 
     def __str__(self):
-        return f"No table named '{self.table_name}' exists."
+        return self.message
 
 
 class TableAlreadyExists(KeyError):
@@ -28,12 +30,10 @@ class UpdateAnnotationError(ValueError):
     def __init__(
         self,
         target_id: int,
-        superceded_id: int,
-        message: str = "Annotation limit exceeded",
+        superseded_id: int,
     ):
         self.target_id = target_id
-        self.message = f"""Annotation with ID {target_id} has already been superseded by annotation ID {superceded_id},
-                        update annotation ID {superceded_id} instead"""
+        self.message = f"Annotation with ID {target_id} has already been superseded by annotation ID {superseded_id}, update annotation ID {superseded_id} instead"
         super().__init__(self.message)
 
     def __str__(self):
