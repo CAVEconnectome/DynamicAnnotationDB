@@ -35,7 +35,7 @@ def test_create_segmentation_model(dadb_interface):
 
 def test_create_reference_annotation_model(dadb_interface):
     valid_ref_schema = dadb_interface.schema.create_reference_annotation_model(
-        "test_ref_table_2", "presynaptic_bouton_types", "test_synapse_2"
+        "test_ref_table_2", "presynaptic_bouton_type", "test_synapse_2"
     )
 
     assert isinstance(valid_ref_schema, DeclarativeMeta)
