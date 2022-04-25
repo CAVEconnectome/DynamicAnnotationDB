@@ -56,7 +56,6 @@ class DynamicSchemaClient:
         schema_type: str,
         target_table: str,
         segmentation_source: str = None,
-        table_metadata: dict = None,
         with_crud_columns: bool = True,
     ):
         return em_models.make_reference_annotation_model(
@@ -64,7 +63,6 @@ class DynamicSchemaClient:
             schema_type,
             target_table,
             segmentation_source,
-            table_metadata,
             with_crud_columns,
         )
 
