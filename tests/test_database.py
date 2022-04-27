@@ -1,6 +1,6 @@
 import logging
 from sqlalchemy import Table
-
+import pytest
 
 def test_get_table_metadata(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]
@@ -20,6 +20,20 @@ def test_get_table_sql_metadata(dadb_interface, annotation_metadata):
     sql_metadata = dadb_interface.database.get_table_sql_metadata(table_name)
     logging.info(sql_metadata)
     assert isinstance(sql_metadata, Table)
+
+    # test for filtered column
+    schema_metadata = dadb_interface.database.get_table_sql_metadata(
+        table_name, "schema_type")
+    assert schema_metadata == "synapse"
+
+    # test for missing column
+    with pytest.raises(KeyError) as e:
+        bad_return = dadb_interface.database.get_table_sql_metadata(
+            table_name, "missing_column")
+    assert str(e.value) == "Reference table must be a ReferenceAnnotation schema type"
+
+
+
 
 
 def test_get_model_columns(dadb_interface, annotation_metadata):
