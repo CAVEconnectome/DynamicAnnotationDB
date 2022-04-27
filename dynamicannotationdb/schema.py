@@ -66,6 +66,17 @@ class DynamicSchemaClient:
             with_crud_columns,
         )
 
+    def create_flat_model(
+        self,
+        table_name: str,
+        schema_type: str,
+        segmentation_source: str,
+        table_metadata: str,
+    ):
+        return em_models.make_flat_model(
+            table_name, schema_type, segmentation_source, table_metadata
+        )
+
     def flattened_schema_data(self, data):
         return flatten_dict(data)
 
