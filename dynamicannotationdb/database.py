@@ -2,7 +2,7 @@ import logging
 from typing import List
 
 from emannotationschemas import models as em_models
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, func
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
@@ -68,12 +68,18 @@ class DynamicAnnotationDB(DynamicAnnotationBase):
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
 
-    def get_table_metadata(self, table_name: str):
-        result = (
+    def get_table_metadata(self, table_name: str, filter_col: str = None):
+        query = (
             self.cached_session.query(AnnoMetadata)
             .filter(AnnoMetadata.table_name == table_name)
-            .one()
         )
+        if filter_col:
+            try:
+                query.filter(getattr(AnnoMetadata, filter_col) == filter_col)
+            except KeyError as e:
+                raise e
+
+        result = query.all()
         if not result:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
@@ -95,6 +101,26 @@ class DynamicAnnotationDB(DynamicAnnotationBase):
         """
         Model = self._cached_table(table_name)
         return self.cached_session.query(Model).count()
+
+    def get_max_id_value(self, table_name: str) -> int:
+        model = self._cached_table(table_name)
+        return self.cached_session.query(func.max(model.id)).scalar()
+
+    def get_min_id_value(self, table_name: str) -> int:
+        model = self._cached_table(table_name)
+        return self.cached_session.query(func.min(model.id)).scalar()
+
+    def get_table_row_count(self, table_name: str, filter_valid: bool = False) -> int:
+        model = self._cached_table(table_name)
+        if filter_valid:
+            row_count = (
+                self.cached_session.query(func.count(model.id))
+                .filter(model.valid == True)
+                .scalar()
+            )
+        else:
+            row_count = self.cached_session.query(func.count(model.id)).scalar()
+        return row_count
 
     @staticmethod
     def get_automap_items(result):
