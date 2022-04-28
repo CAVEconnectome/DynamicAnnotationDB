@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Sequence
 
 from emannotationschemas import get_schema
 from emannotationschemas import models as em_models
@@ -75,6 +75,25 @@ class DynamicSchemaClient:
     ):
         return em_models.make_flat_model(
             table_name, schema_type, segmentation_source, table_metadata
+        )
+
+    def create_dataset_models(
+        self,
+        aligned_volume: str,
+        schemas_and_tables: Sequence[tuple],
+        segmentation_source: str = None,
+        include_contacts: bool = False,
+        metadata_dict: dict = None,
+        with_crud_columns: bool = True,
+    ):
+
+        return em_models.make_dataset_models(
+            aligned_volume,
+            schemas_and_tables,
+            segmentation_source,
+            include_contacts,
+            metadata_dict,
+            with_crud_columns,
         )
 
     def flattened_schema_data(self, data):
