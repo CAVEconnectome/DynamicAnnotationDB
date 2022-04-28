@@ -154,10 +154,14 @@ class DynamicAnnotationClient(DynamicAnnotationDB, DynamicSchemaClient):
                     returns TRIGGER
                     as $func$
                     begin
-                        update {table_name} ref
-                        set target_id = new.superceded_id
-                        where ref.target_id = old.id;
-                        return new;
+                        if EXISTS (select 1 from information_schema.columns where table_name='{reference_table}' and column_name='superceded_id') THEN
+                            update {table_name} ref
+                            set target_id = new.superceded_id
+                            where ref.target_id = old.id;
+                            return new;
+                        else
+                            return NULL;
+                        END if;
                     end;
                     $func$ language plpgsql;
                     """
