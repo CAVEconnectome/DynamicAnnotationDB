@@ -1,6 +1,5 @@
 import logging
 from typing import List
-
 from emannotationschemas import models as em_models
 from sqlalchemy import create_engine, inspect, func
 from sqlalchemy.ext.automap import automap_base
@@ -69,22 +68,15 @@ class DynamicAnnotationDB(DynamicAnnotationBase):
         return self.base.metadata.tables[table_name]
 
     def get_table_metadata(self, table_name: str, filter_col: str = None):
-        query = (
-            self.cached_session.query(AnnoMetadata)
-            .filter(AnnoMetadata.table_name == table_name)
+        data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
+        query = self.cached_session.query(data).filter(
+            AnnoMetadata.table_name == table_name
         )
-        if filter_col:
-            try:
-                query.filter(getattr(AnnoMetadata, filter_col) == filter_col)
-            except KeyError as e:
-                raise e
-
-        result = query.all()
-        if not result:
-            raise TableNameNotFound(
-                f"Error: No table name exists with name {table_name}."
-            )
-        return self.get_automap_items(result)
+        result = query.one()
+        if hasattr(result, "__dict__"):
+            return self.get_automap_items(result)
+        else:
+            return result[0]
 
     def get_annotation_table_size(self, table_name: str) -> int:
         """Get the number of annotations in a table
@@ -115,7 +107,7 @@ class DynamicAnnotationDB(DynamicAnnotationBase):
         if filter_valid:
             row_count = (
                 self.cached_session.query(func.count(model.id))
-                .filter(model.valid == True)
+                .filter(model.valid is True)
                 .scalar()
             )
         else:
