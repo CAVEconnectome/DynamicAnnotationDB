@@ -43,7 +43,7 @@ def test_create_reference_annotation_model(dadb_interface):
 
 def test_create_flat_model(dadb_interface):
     valid_ref_schema = dadb_interface.schema.create_flat_model(
-        "test_ref_table_2", "presynaptic_bouton_type", "test_synapse_2"
+        "test_flat_table_1", "synapse", "test_annodb",
     )
 
     assert isinstance(valid_ref_schema, DeclarativeMeta)

@@ -71,7 +71,7 @@ class DynamicSchemaClient:
         table_name: str,
         schema_type: str,
         segmentation_source: str,
-        table_metadata: str,
+        table_metadata: str = None,
     ):
         return em_models.make_flat_model(
             table_name, schema_type, segmentation_source, table_metadata
