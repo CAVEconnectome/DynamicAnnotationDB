@@ -15,17 +15,18 @@ from .models import SegmentationMetadata
 from .schema import DynamicSchemaClient
 
 
-class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
-    def __init__(self, url: str, aligned_volume: str = None) -> None:
-        super().__init__(url, aligned_volume)
+class DynamicSegmentationClient:
+    def __init__(self, sql_url: str) -> None:
+        self.db = DynamicAnnotationDB(sql_url)
+        self.schema = DynamicSchemaClient()
 
     def create_segmentation_table(
-        self,
-        table_name: str,
-        schema_type: str,
-        segmentation_source: str,
-        table_metadata: dict = None,
-        with_crud_columns: bool = False,
+            self,
+            table_name: str,
+            schema_type: str,
+            segmentation_source: str,
+            table_metadata: dict = None,
+            with_crud_columns: bool = False,
     ):
         """Create a segmentation table with the primary key as foreign key
         to the annotation table.
@@ -52,9 +53,9 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
             table_name, segmentation_source
         )
 
-        self._check_table_is_unique(segmentation_table_name)
+        self.db._check_table_is_unique(segmentation_table_name)
 
-        SegmentationModel = self.create_segmentation_model(
+        SegmentationModel = self.schema.create_segmentation_model(
             table_name,
             schema_type,
             segmentation_source,
@@ -63,11 +64,11 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         )
 
         if (
-            not self.cached_session.query(SegmentationMetadata)
-            .filter(SegmentationMetadata.table_name == segmentation_table_name)
-            .scalar()
+                not self.db.cached_session.query(SegmentationMetadata)
+                        .filter(SegmentationMetadata.table_name == segmentation_table_name)
+                        .scalar()
         ):
-            SegmentationModel.__table__.create(bind=self._engine, checkfirst=True)
+            SegmentationModel.__table__.create(bind=self.db._engine, checkfirst=True)
             creation_time = datetime.datetime.utcnow()
             metadata_dict = {
                 "annotation_table": table_name,
@@ -80,8 +81,8 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
 
             seg_metadata = SegmentationMetadata(**metadata_dict)
             try:
-                self.cached_session.add(seg_metadata)
-                self.commit_session()
+                self.db.cached_session.add(seg_metadata)
+                self.db.commit_session()
             except Exception as e:
                 logging.error(f"SQL ERROR: {e}")
 
@@ -90,10 +91,10 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
     def get_linked_tables(self, table_name: str, pcg_table_name: str) -> List:
         try:
             return (
-                self.cached_session.query(SegmentationMetadata)
-                .filter(SegmentationMetadata.annotation_table == table_name)
-                .filter(SegmentationMetadata.pcg_table_name == pcg_table_name)
-                .all()
+                self.db.cached_session.query(SegmentationMetadata)
+                    .filter(SegmentationMetadata.annotation_table == table_name)
+                    .filter(SegmentationMetadata.pcg_table_name == pcg_table_name)
+                    .all()
             )
 
         except Exception as e:
@@ -102,7 +103,7 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
             ) from e
 
     def get_linked_annotations(
-        self, table_name: str, pcg_table_name: str, annotation_ids: List[int]
+            self, table_name: str, pcg_table_name: str, annotation_ids: List[int]
     ) -> dict:
         """Get list of annotations from database by id.
 
@@ -121,20 +122,20 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
             list of annotation data dicts
         """
 
-        metadata = self.get_table_metadata(table_name)
+        metadata = self.db.get_table_metadata(table_name)
         schema_type = metadata["schema_type"]
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
-        AnnotationModel = self._cached_table(table_name)
-        SegmentationModel = self._cached_table(seg_table_name)
+        AnnotationModel = self.db.cached_table(table_name)
+        SegmentationModel = self.db.cached_table(seg_table_name)
 
         annotations = (
-            self.cached_session.query(AnnotationModel, SegmentationModel)
-            .join(SegmentationModel, SegmentationModel.id == AnnotationModel.id)
-            .filter(AnnotationModel.id.in_(list(annotation_ids)))
-            .all()
+            self.db.cached_session.query(AnnotationModel, SegmentationModel)
+                .join(SegmentationModel, SegmentationModel.id == AnnotationModel.id)
+                .filter(AnnotationModel.id.in_(list(annotation_ids)))
+                .all()
         )
 
-        FlatSchema = self.get_flattened_schema(schema_type)
+        FlatSchema = self.schema.get_flattened_schema(schema_type)
         schema = FlatSchema(unknown=INCLUDE)
 
         data = []
@@ -156,7 +157,7 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         return schema.load(data, many=True)
 
     def insert_linked_segmentation(
-        self, table_name: str, pcg_table_name: str, segmentation_data: List[dict]
+            self, table_name: str, pcg_table_name: str, segmentation_data: List[dict]
     ):
         """Insert segmentation data by linking to annotation ids.
         Limited to 10,000 inserts. If more consider using a bulk insert script.
@@ -175,18 +176,19 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         if len(segmentation_data) > insertion_limit:
             raise AnnotationInsertLimitExceeded(len(segmentation_data), insertion_limit)
 
-        metadata = self.get_table_metadata(table_name)
+        metadata = self.db.get_table_metadata(table_name)
         schema_type = metadata["schema_type"]
+
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
 
-        SegmentationModel = self._cached_table(seg_table_name)
+        SegmentationModel = self.db.cached_table(seg_table_name)
         formatted_seg_data = []
 
-        _, segmentation_schema = self._split_flattened_schema(schema_type)
+        _, segmentation_schema = self.schema.split_flattened_schema(schema_type)
 
         for segmentation in segmentation_data:
-            segmentation_data = self.flattened_schema_data(segmentation)
-            flat_data = self._map_values_to_schema(
+            segmentation_data = self.schema.flattened_schema_data(segmentation)
+            flat_data = self.schema._map_values_to_schema(
                 segmentation_data, segmentation_schema
             )
             flat_data["id"] = segmentation["id"]
@@ -199,21 +201,21 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         ]
 
         ids = [data["id"] for data in formatted_seg_data]
-        q = self.cached_session.query(SegmentationModel).filter(
+        q = self.db.cached_session.query(SegmentationModel).filter(
             SegmentationModel.id.in_(list(ids))
         )
 
-        ids_exist = self.cached_session.query(q.exists()).scalar()
+        ids_exist = self.db.cached_session.query(q.exists()).scalar()
 
         if ids_exist:
             raise IdsAlreadyExists(f"Annotation IDs {ids} already linked in database ")
-        self.cached_session.add_all(segs)
+        self.db.cached_session.add_all(segs)
         seg_ids = [seg.id for seg in segs]
-        self.commit_session()
+        self.db.commit_session()
         return seg_ids
 
     def insert_linked_annotations(
-        self, table_name: str, pcg_table_name: str, annotations: List[dict]
+            self, table_name: str, pcg_table_name: str, annotations: List[dict]
     ):
         """Insert annotations by type and schema. Limited to 10,000
         annotations. If more consider using a bulk insert script.
@@ -232,7 +234,7 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         if len(annotations) > insertion_limit:
             raise AnnotationInsertLimitExceeded(len(annotations), insertion_limit)
 
-        metadata = self.get_table_metadata(table_name)
+        metadata = self.db.get_table_metadata(table_name)
         schema_type = metadata["schema_type"]
 
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
@@ -240,14 +242,14 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         formatted_anno_data = []
         formatted_seg_data = []
 
-        AnnotationModel = self._cached_table(table_name)
-        SegmentationModel = self._cached_table(seg_table_name)
+        AnnotationModel = self.db.cached_table(table_name)
+        SegmentationModel = self.db.cached_table(seg_table_name)
         logging.info(f"{AnnotationModel.__table__.columns}")
         logging.info(f"{SegmentationModel.__table__.columns}")
 
         for annotation in annotations:
 
-            anno_data, seg_data = self._split_flattened_schema_data(
+            anno_data, seg_data = self.schema.split_flattened_schema_data(
                 schema_type, annotation
             )
             if annotation.get("id"):
@@ -265,19 +267,19 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
             ]
         except Exception as e:
             raise e
-        self.cached_session.add_all(annos)
-        self.cached_session.flush()
+        self.db.cached_session.add_all(annos)
+        self.db.cached_session.flush()
         segs = [
             SegmentationModel(**segmentation_data, id=anno.id)
             for segmentation_data, anno in zip(formatted_seg_data, annos)
         ]
         ids = [anno.id for anno in annos]
-        self.cached_session.add_all(segs)
-        self.commit_session()
+        self.db.cached_session.add_all(segs)
+        self.db.commit_session()
         return ids
 
     def update_linked_annotations(
-        self, table_name: str, pcg_table_name: str, annotation: dict
+            self, table_name: str, pcg_table_name: str, annotation: dict
     ):
         """Updates an annotation by inserting a new row. The original annotation
         will refer to the new row with a superseded_id. Does not update inplace.
@@ -294,15 +296,17 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         if not anno_id:
             return "Annotation requires an 'id' to update targeted row"
 
-        seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
-
-        metadata = self.get_table_metadata(table_name)
+        metadata = self.db.get_table_metadata(table_name)
         schema_type = metadata["schema_type"]
 
-        AnnotationModel = self._cached_table(table_name)
-        SegmentationModel = self._cached_table(seg_table_name)
+        seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
 
-        new_annotation, __ = self._split_flattened_schema_data(schema_type, annotation)
+        AnnotationModel = self.db.cached_table(table_name)
+        SegmentationModel = self.db.cached_table(seg_table_name)
+
+        new_annotation, __ = self.schema.split_flattened_schema_data(
+            schema_type, annotation
+        )
 
         new_annotation["created"] = datetime.datetime.now()
         new_annotation["valid"] = True
@@ -310,30 +314,30 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         new_data = AnnotationModel(**new_annotation)
 
         data = (
-            self.cached_session.query(AnnotationModel, SegmentationModel)
-            .filter(AnnotationModel.id == anno_id)
-            .filter(SegmentationModel.id == anno_id)
-            .all()
+            self.db.cached_session.query(AnnotationModel, SegmentationModel)
+                .filter(AnnotationModel.id == anno_id)
+                .filter(SegmentationModel.id == anno_id)
+                .all()
         )
         update_map = {}
         for old_anno, old_seg in data:
             if old_anno.superceded_id:
                 raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
 
-            self.cached_session.add(new_data)
-            self.cached_session.flush()
+            self.db.cached_session.add(new_data)
+            self.db.cached_session.flush()
 
             deleted_time = datetime.datetime.now()
             old_anno.deleted = deleted_time
             old_anno.superceded_id = new_data.id
             old_anno.valid = False
             update_map[anno_id] = new_data.id
-            self.commit_session()
+        self.db.commit_session()
 
         return update_map
 
     def delete_linked_annotation(
-        self, table_name: str, pcg_table_name: str, annotation_ids: List[int]
+            self, table_name: str, pcg_table_name: str, annotation_ids: List[int]
     ):
         """Mark annotations by for deletion by list of ids.
 
@@ -353,14 +357,14 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         ------
         """
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
-        AnnotationModel = self._cached_table(table_name)
-        SegmentationModel = self._cached_table(seg_table_name)
+        AnnotationModel = self.db.cached_table(table_name)
+        SegmentationModel = self.db.cached_table(seg_table_name)
 
         annotations = (
-            self.cached_session.query(AnnotationModel)
-            .join(SegmentationModel, SegmentationModel.id == AnnotationModel.id)
-            .filter(AnnotationModel.id.in_(list(annotation_ids)))
-            .all()
+            self.db.cached_session.query(AnnotationModel)
+                .join(SegmentationModel, SegmentationModel.id == AnnotationModel.id)
+                .filter(AnnotationModel.id.in_(list(annotation_ids)))
+                .all()
         )
 
         if not annotations:
@@ -370,5 +374,5 @@ class DynamicSegmentationClient(DynamicAnnotationDB, DynamicSchemaClient):
         for annotation in annotations:
             annotation.deleted = deleted_time
             annotation.valid = False
-        self.commit_session()
+        self.db.commit_session()
         return deleted_ids
