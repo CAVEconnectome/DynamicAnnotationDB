@@ -169,7 +169,7 @@ class DynamicMigration:
             return migrations
         try:
             engine = self.target_database.engine
-            with eninge.connection() as conn:
+            with engine.connection() as conn:
                 conn.execute(sql)
             return migrations
         except Exception as e:
@@ -312,7 +312,7 @@ class DynamicMigration:
                 index_map[column.name] = spatial_index_map
             if column.foreign_keys:
                 metadata_obj = MetaData()
-                metadata_obj.reflect(bind=self.engine)
+                metadata_obj.reflect(bind=self.target_database.engine)
 
                 foreign_keys = list(column.foreign_keys)
                 for foreign_key in foreign_keys:
@@ -342,7 +342,7 @@ class DynamicMigration:
         Returns:
             bool: True if all constraints and indices are dropped
         """
-        indices = self.get_table_indices(table_name)
+        indices = self.get_table_indexes(table_name)
         if not indices:
             return f"No indices on '{table_name}' found."
         command = f"ALTER TABLE {table_name}"
@@ -385,7 +385,7 @@ class DynamicMigration:
         Returns:
             str: list of indices added to table
         """
-        current_indices = self.get_table_indices(table_name)
+        current_indices = self.get_table_indexes(table_name)
         model_indices = self.get_index_from_model(model)
         missing_indices = set(model_indices) - set(current_indices)
         commands = []
