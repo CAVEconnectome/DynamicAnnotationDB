@@ -219,7 +219,7 @@ class DynamicMigration:
                     .filter(AnnoMetadata.table_name == table_name)
                     .one()
                 )
-                sql += f"DEFAULT '{creation_time[0].strftime('%Y-%m-%d %H:%M:%S')}'"
+                sql += f" DEFAULT '{creation_time[0].strftime('%Y-%m-%d %H:%M:%S')}'"
             else:
                 model_column.nullable = True
             return sql
