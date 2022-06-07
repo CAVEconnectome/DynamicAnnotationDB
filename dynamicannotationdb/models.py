@@ -9,12 +9,21 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    Enum,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
+# Models that will be created in the 'materialized' database.
 MatBase = declarative_base()
+# Models that will be created in the 'annotation' database.
+AnnotationBase = declarative_base()
+
+
+class AnalysisDataBase(AnnotationBase):
+    __tablename__ = "analysisdatabase"
+    id = Column(Integer, primary_key=True)
+    database = Column(String(100), nullable=False)
+    materialize = Column(Boolean, nullable=False, default=True)
 
 
 class AnalysisVersion(Base):
