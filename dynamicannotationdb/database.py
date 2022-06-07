@@ -1,26 +1,24 @@
 import logging
 from typing import List
-from emannotationschemas import models as em_models
+
 from sqlalchemy import create_engine, inspect, func
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
-from .base import DynamicAnnotationBase
 from .errors import TableAlreadyExists, TableNameNotFound
-from .models import AnnoMetadata, SegmentationMetadata
+from .models import AnnoMetadata, SegmentationMetadata, Base
 
 
-class DynamicAnnotationDB(DynamicAnnotationBase):
-    def __init__(self, url: str = None, aligned_volume: str = None) -> None:
-        super().__init__(url, aligned_volume)
+class DynamicAnnotationDB:
+    def __init__(self, sql_url: str) -> None:
+
         self._cached_session = None
         self._cached_tables = {}
-        self._engine = None
         self._engine = create_engine(
-            url, pool_recycle=3600, pool_size=20, max_overflow=50
+            sql_url, pool_recycle=3600, pool_size=20, max_overflow=50
         )
-        self.base = em_models.Base
+        self.base = Base
         self.base.metadata.bind = self._engine
 
         table_objects = [
@@ -37,10 +35,14 @@ class DynamicAnnotationDB(DynamicAnnotationBase):
         self.session = scoped_session(
             sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
         )
-        self.insp = inspect(self.engine)
+        self._inspector = inspect(self.engine)
 
         self._cached_session = None
         self._cached_tables = {}
+
+    @property
+    def inspector(self):
+        return self._inspector
 
     @property
     def engine(self):
@@ -91,24 +93,24 @@ class DynamicAnnotationDB(DynamicAnnotationBase):
         int
             number of annotations
         """
-        Model = self._cached_table(table_name)
+        Model = self.cached_table(table_name)
         return self.cached_session.query(Model).count()
 
     def get_max_id_value(self, table_name: str) -> int:
-        model = self._cached_table(table_name)
+        model = self.cached_table(table_name)
         return self.cached_session.query(func.max(model.id)).scalar()
 
     def get_min_id_value(self, table_name: str) -> int:
-        model = self._cached_table(table_name)
+        model = self.cached_table(table_name)
         return self.cached_session.query(func.min(model.id)).scalar()
 
     def get_table_row_count(self, table_name: str, filter_valid: bool = False) -> int:
-        model = self._cached_table(table_name)
+        model = self.cached_table(table_name)
         if filter_valid:
             row_count = (
                 self.cached_session.query(func.count(model.id))
-                .filter(model.valid is True)
-                .scalar()
+                    .filter(model.valid is True)
+                    .scalar()
             )
         else:
             row_count = self.cached_session.query(func.count(model.id)).scalar()
@@ -178,14 +180,14 @@ class DynamicAnnotationDB(DynamicAnnotationBase):
         list
             column names and types
         """
-        db_columns = self.insp.get_columns(table_name)
+        db_columns = self.inspector.get_columns(table_name)
         if not db_columns:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
             )
         return [(column["name"], column["type"]) for column in db_columns]
 
-    def _cached_table(self, table_name: str) -> DeclarativeMeta:
+    def cached_table(self, table_name: str) -> DeclarativeMeta:
         """Returns cached table 'DeclarativeMeta' callable for querying.
 
         Parameters
