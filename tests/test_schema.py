@@ -43,10 +43,13 @@ def test_create_reference_annotation_model(dadb_interface):
 
 def test_create_flat_model(dadb_interface):
     valid_ref_schema = dadb_interface.schema.create_flat_model(
-        "test_flat_table_1", "synapse", "test_annodb",
+        "test_flat_table_1",
+        "synapse",
+        "test_annodb",
     )
 
     assert isinstance(valid_ref_schema, DeclarativeMeta)
+
 
 def test_flattened_schema_data(dadb_interface):
     test_data = {
@@ -65,20 +68,20 @@ def test_flattened_schema_data(dadb_interface):
     assert flattened_data == flat_data
 
 
-def test__split_flattened_schema(dadb_interface):
-    anno_schema, seg_schema = dadb_interface.schema._split_flattened_schema("synapse")
+def test_split_flattened_schema(dadb_interface):
+    anno_schema, seg_schema = dadb_interface.schema.split_flattened_schema("synapse")
     assert isinstance(anno_schema, marshmallow.schema.SchemaMeta)
     assert isinstance(seg_schema, marshmallow.schema.SchemaMeta)
 
 
-def test__split_flattened_schema_data(dadb_interface):
+def test_split_flattened_schema_data(dadb_interface):
     test_data = {
         "id": 1,
         "pre_pt": {"position": [222, 123, 1232]},
         "ctr_pt": {"position": [121, 123, 1232]},
         "post_pt": {"position": [555, 555, 5555]},
     }
-    flat_anno_data, flat_seg_data = dadb_interface.schema._split_flattened_schema_data(
+    flat_anno_data, flat_seg_data = dadb_interface.schema.split_flattened_schema_data(
         "synapse", test_data
     )
 
