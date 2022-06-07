@@ -10,18 +10,17 @@ from .errors import SelfReferenceTableError, TableNameNotFound
 
 
 class DynamicSchemaClient:
-    def __init__(self) -> None:
-        pass
-
-    def get_schema(self, schema_type: str):
+    @staticmethod
+    def get_schema(schema_type: str):
         return get_schema(schema_type)
 
-    def get_flattened_schema(self, schema_type: str):
+    @staticmethod
+    def get_flattened_schema(schema_type: str):
         Schema = get_schema(schema_type)
         return em_models.create_flattened_schema(Schema)
 
+    @staticmethod
     def create_annotation_model(
-        self,
         table_name: str,
         schema_type: str,
         table_metadata: dict = None,
@@ -34,8 +33,8 @@ class DynamicSchemaClient:
             with_crud_columns=with_crud_columns,
         )
 
+    @staticmethod
     def create_segmentation_model(
-        self,
         table_name: str,
         schema_type: str,
         segmentation_source: str,
@@ -50,8 +49,8 @@ class DynamicSchemaClient:
             with_crud_columns,
         )
 
+    @staticmethod
     def create_reference_annotation_model(
-        self,
         table_name: str,
         schema_type: str,
         target_table: str,
@@ -66,8 +65,8 @@ class DynamicSchemaClient:
             with_crud_columns,
         )
 
+    @staticmethod
     def create_flat_model(
-        self,
         table_name: str,
         schema_type: str,
         segmentation_source: str,
@@ -77,8 +76,8 @@ class DynamicSchemaClient:
             table_name, schema_type, segmentation_source, table_metadata
         )
 
+    @staticmethod
     def create_dataset_models(
-        self,
         aligned_volume: str,
         schemas_and_tables: Sequence[tuple],
         segmentation_source: str = None,
@@ -96,10 +95,12 @@ class DynamicSchemaClient:
             with_crud_columns,
         )
 
-    def flattened_schema_data(self, data):
+    @staticmethod
+    def flattened_schema_data(data):
         return flatten_dict(data)
 
-    def _split_flattened_schema(self, schema_type: str):
+    @staticmethod
+    def split_flattened_schema(schema_type: str):
         schema_type = get_schema(schema_type)
 
         (
@@ -109,7 +110,7 @@ class DynamicSchemaClient:
 
         return flat_annotation_schema, flat_segmentation_schema
 
-    def _split_flattened_schema_data(
+    def split_flattened_schema_data(
         self, schema_type: str, data: dict
     ) -> Tuple[dict, dict]:
         schema_type = get_schema(schema_type)
@@ -130,7 +131,8 @@ class DynamicSchemaClient:
             self._map_values_to_schema(data, flat_segmentation_schema),
         )
 
-    def _map_values_to_schema(self, data: dict, schema: Schema):
+    @staticmethod
+    def _map_values_to_schema(data: dict, schema: Schema):
         return {
             key: data[key]
             for key, value in schema._declared_fields.items()
