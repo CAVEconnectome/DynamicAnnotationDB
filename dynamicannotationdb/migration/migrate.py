@@ -5,14 +5,17 @@ from dynamicannotationdb.database import DynamicAnnotationDB
 from dynamicannotationdb.models import AnnoMetadata
 from dynamicannotationdb.schema import DynamicSchemaClient
 from emannotationschemas.errors import UnknownAnnotationTypeException
+from emannotationschemas.migrations.run import run_migration
 from geoalchemy2.types import Geometry
 from psycopg2.errors import DuplicateSchema
-from sqlalchemy import MetaData, event
+from sqlalchemy import MetaData, event, create_engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.schema import CreateSchema
+from sqlalchemy.exc import OperationalError
 
 # migration tables live in separate schema in database.
+
 migration_metadata = MetaData(schema="schemas")
 # bind migration metadata to declarative base
 MigrationBase = declarative_base(metadata=migration_metadata)
@@ -68,29 +71,46 @@ class DynamicMigration:
         self, sql_uri: str, target_db: str, schema_db: str = "schemas"
     ) -> None:
         self._base_uri = sql_uri.rpartition("/")[0]
-
         self.target_database, self.target_inspector = self.setup_inspector(target_db)
-        self.schema_database, self.schema_inspector = self.setup_inspector(schema_db)
-
-        self.schema_client = DynamicSchemaClient()
 
         try:
-            db_schema_name = "schemas"
+            self.schema_database, self.schema_inspector = self.setup_inspector(
+                schema_db
+            )
+        except OperationalError as e:
+            logging.warning(f"Cannot connect to {schema_db}, attempting to create")
+            default_sql_uri = make_url(f"{self._base_uri}/postgres")
+            engine = create_engine(default_sql_uri)
+
+            with engine.connect() as conn:
+                conn.execute("COMMIT")
+                conn.execute(f"CREATE DATABASE {schema_db}")
+
+            logging.info(f"{schema_db} created")
+
+        self.schema_database, self.schema_inspector = self.setup_inspector(schema_db)
+
+        try:
             if not self.schema_database.engine.dialect.has_schema(
-                self.schema_database.engine, schema=db_schema_name
+                self.schema_database.engine, schema=schema_db
             ):
+
                 event.listen(
                     self.schema_database.base.metadata,
                     "before_create",
-                    CreateSchema(db_schema_name),
+                    CreateSchema(schema_db),
                 )
-                logging.info(f"Database schema {db_schema_name} created.")
+                logging.info(f"Database schema {schema_db} created.")
 
-                self.base.metadata.create_all(
+                self.schema_database.base.metadata.create_all(
                     self.schema_database.engine, checkfirst=True
                 )
+                logging.info("Running migrations")
+                run_migration(str(self.schema_database.engine.url))
         except DuplicateSchema as e:
-            logging.warning(f"Schema {db_schema_name} already exists: {e}")
+            logging.warning(f"Schema {schema_db} already exists: {e}")
+
+        self.schema_client = DynamicSchemaClient()
 
     def setup_inspector(self, database: str):
         sql_uri = make_url(f"{self._base_uri}/{database}")
