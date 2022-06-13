@@ -1,5 +1,4 @@
 import logging
-from collections import namedtuple
 
 from dynamicannotationdb.database import DynamicAnnotationDB
 from dynamicannotationdb.models import AnnoMetadata
@@ -8,22 +7,10 @@ from emannotationschemas.errors import UnknownAnnotationTypeException
 from emannotationschemas.migrations.run import run_migration
 from geoalchemy2.types import Geometry
 from psycopg2.errors import DuplicateSchema
-from sqlalchemy import MetaData, event, create_engine
+from sqlalchemy import MetaData, create_engine
 from sqlalchemy.engine.url import make_url
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.schema import CreateSchema
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.pool import NullPool
 
-# migration tables live in separate schema in database.
-
-migration_metadata = MetaData(schema="schemas")
-# bind migration metadata to declarative base
-MigrationBase = declarative_base(metadata=migration_metadata)
-
-
-InspectorResults = namedtuple(
-    "InspectorResults", ["schema_only", "target_only", "common", "diff"]
-)
 
 # SQL commands
 def alter_column_name(table_name: str, current_col_name: str, new_col_name: str) -> str:
@@ -59,9 +46,9 @@ def add_foreign_key(
     target_column: str,
 ):
     return f"""ALTER TABLE "{table_name}"
-                    ADD CONSTRAINT {foreign_key_name}
-                    FOREIGN KEY ("{foreign_key_column}") 
-                    REFERENCES "{foreign_key_table}" ("{target_column}");"""
+               ADD CONSTRAINT {foreign_key_name}
+               FOREIGN KEY ("{foreign_key_column}") 
+               REFERENCES "{foreign_key_table}" ("{target_column}");"""
 
 
 class DynamicMigration:
@@ -72,45 +59,35 @@ class DynamicMigration:
     ) -> None:
         self._base_uri = sql_uri.rpartition("/")[0]
         self.target_database, self.target_inspector = self.setup_inspector(target_db)
+        self.schema_client = DynamicSchemaClient()
+
+        temp_engine = create_engine(
+            self._base_uri,
+            poolclass=NullPool,
+            isolation_level="AUTOCOMMIT",
+            pool_pre_ping=True,
+        )
+
+        with temp_engine.connect() as connection:
+
+            connection.execute("commit")
+            database_exists = connection.execute(
+                f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{schema_db}'"
+            )
+            if not database_exists.fetchone():
+                logging.warning(f"Cannot connect to {schema_db}, attempting to create")
+                connection.execute(f"CREATE DATABASE {schema_db}")
+        logging.info(f"{schema_db} created")
+        temp_engine.dispose()
 
         try:
-            self.schema_database, self.schema_inspector = self.setup_inspector(
-                schema_db
-            )
-        except OperationalError as e:
-            logging.warning(f"Cannot connect to {schema_db}, attempting to create")
-            default_sql_uri = make_url(f"{self._base_uri}/postgres")
-            engine = create_engine(default_sql_uri)
-
-            with engine.connect() as conn:
-                conn.execute("COMMIT")
-                conn.execute(f"CREATE DATABASE {schema_db}")
-
-            logging.info(f"{schema_db} created")
+            logging.info("Running migrations")
+            schema_sql_uri = make_url(f"{self._base_uri}/{schema_db}")
+            run_migration(str(schema_sql_uri))
+        except DuplicateSchema as e:
+            logging.warning(f"Error migrating schema database: {e}")
 
         self.schema_database, self.schema_inspector = self.setup_inspector(schema_db)
-
-        try:
-            if not self.schema_database.engine.dialect.has_schema(
-                self.schema_database.engine, schema=schema_db
-            ):
-
-                event.listen(
-                    self.schema_database.base.metadata,
-                    "before_create",
-                    CreateSchema(schema_db),
-                )
-                logging.info(f"Database schema {schema_db} created.")
-
-                self.schema_database.base.metadata.create_all(
-                    self.schema_database.engine, checkfirst=True
-                )
-                logging.info("Running migrations")
-                run_migration(str(self.schema_database.engine.url))
-        except DuplicateSchema as e:
-            logging.warning(f"Schema {schema_db} already exists: {e}")
-
-        self.schema_client = DynamicSchemaClient()
 
     def setup_inspector(self, database: str):
         sql_uri = make_url(f"{self._base_uri}/{database}")
@@ -181,9 +158,13 @@ class DynamicMigration:
 
             sql = add_column(db_table.name, col_spec)
             sql = self.set_default_non_nullable(db_table, column, model_column, sql)
-            col_to_migrate = f"{model_table.name}.{model_column.name}"
+            col_to_migrate = f"{db_table.name}.{model_column.name}"
             logging.info(f"Adding column {col_to_migrate}")
             migrations[col_to_migrate] = sql
+
+        # get missing table indexes
+        index_sql_commands = self.add_indexes_sql_commands(table_name)
+        migrations.update(index_sql_commands)
 
         if dry_run:
             return migrations
@@ -242,9 +223,9 @@ class DynamicMigration:
                 sql += f" DEFAULT '{creation_time[0].strftime('%Y-%m-%d %H:%M:%S')}'"
             else:
                 model_column.nullable = True
-            return sql
+        return sql
 
-    def get_table_indexes(self, table_name: str):
+    def get_table_indexes(self, table_name: str, db: str):
         """Reflect current indexes, primary key(s) and foreign keys
          on given target table using SQLAlchemy inspector method.
 
@@ -254,11 +235,11 @@ class DynamicMigration:
         Returns:
             dict: Map of reflected indices on given table.
         """
-
+        inspector = getattr(self, f"{db}_inspector")
         try:
-            pk_columns = self.target_inspector.get_pk_constraint(table_name)
-            indexed_columns = self.target_inspector.get_indexes(table_name)
-            foreign_keys = self.target_inspector.get_foreign_keys(table_name)
+            pk_columns = inspector.get_pk_constraint(table_name)
+            indexed_columns = inspector.get_indexes(table_name)
+            foreign_keys = inspector.get_foreign_keys(table_name)
         except Exception as e:
             logging.error(f"No table named '{table_name}', error: {e}")
             return None
@@ -299,7 +280,7 @@ class DynamicMigration:
                 index_map[foreign_key_name] = fk_data
         return index_map
 
-    def get_index_from_model(self, model):
+    def get_index_from_model(self, table_name: str, model):
         """Generate index mapping, primary key and foreign keys(s)
         from supplied SQLAlchemy model. Returns an index map.
 
@@ -309,23 +290,21 @@ class DynamicMigration:
         Returns:
             dict: Index map
         """
-
-        model = model.__table__
         index_map = {}
         for column in model.columns:
             if column.primary_key:
-                pk = {"index_name": f"{model.name}_pkey", "type": "primary_key"}
+                pk = {"index_name": f"{table_name}_pkey", "type": "primary_key"}
                 index_map[column.name] = pk
             if column.index:
                 indx_map = {
-                    "index_name": f"ix_{model.name}_{column.name}",
+                    "index_name": f"ix_{table_name}_{column.name}",
                     "type": "index",
                     "dialect_options": None,
                 }
                 index_map[column.name] = indx_map
             if isinstance(column.type, Geometry):
                 spatial_index_map = {
-                    "index_name": f"idx_{model.name}_{column.name}",
+                    "index_name": f"idx_{table_name}_{column.name}",
                     "type": "spatial_index",
                     "dialect_options": {"postgresql_using": "gist"},
                 }
@@ -333,22 +312,23 @@ class DynamicMigration:
             if column.foreign_keys:
                 metadata_obj = MetaData()
                 metadata_obj.reflect(bind=self.target_database.engine)
+                target_table = metadata_obj.tables.get(table_name)
+                foreign_keys = list(target_table.foreign_keys)
 
-                foreign_keys = list(column.foreign_keys)
                 for foreign_key in foreign_keys:
+
                     (
                         target_table_name,
                         target_column,
                     ) = foreign_key.target_fullname.split(".")
-                    foreign_key_name = f"{target_table_name}_{target_column}_fkey"
                     foreign_key_map = {
                         "type": "foreign_key",
-                        "foreign_key_name": foreign_key_name,
+                        "foreign_key_name": foreign_key.name,
                         "foreign_key_table": target_table_name,
                         "foreign_key_column": foreign_key.constraint.column_keys[0],
                         "target_column": target_column,
                     }
-                    index_map[foreign_key_name] = foreign_key_map
+                    index_map[foreign_key.name] = foreign_key_map
         return index_map
 
     def drop_table_indexes(self, table_name: str):
@@ -394,7 +374,7 @@ class DynamicMigration:
             raise (e)
         return True
 
-    def add_indexes_sql_commands(self, table_name: str, model):
+    def add_indexes_sql_commands(self, table_name: str):
         """Add missing indexes by comparing reflected table and
         model indices. Will add missing indices from model to table.
 
@@ -405,12 +385,17 @@ class DynamicMigration:
         Returns:
             str: list of indices added to table
         """
-        current_indices = self.get_table_indexes(table_name)
-        model_indices = self.get_index_from_model(model)
+        current_indices = self.get_table_indexes(table_name, "target")
+        table_schema_type = self._get_table_schema_type(table_name)
+
+        schema_model = self.get_schema_from_migration(table_schema_type)
+        model_indices = self.get_index_from_model(table_name, schema_model)
         missing_indices = set(model_indices) - set(current_indices)
-        commands = []
+
+        commands = {}
         for column_name in missing_indices:
             index_type = model_indices[column_name]["type"]
+
             if index_type == "primary_key":
                 command = add_primary_key(table_name, column_name)
             if index_type == "index":
@@ -431,7 +416,10 @@ class DynamicMigration:
                 )
 
                 missing_indices.add(foreign_key_name)
-            commands.append(command)
+            index_key = f"{column_name}_{index_type}"
+
+            commands[index_key] = command
+
         return commands
 
     @staticmethod
