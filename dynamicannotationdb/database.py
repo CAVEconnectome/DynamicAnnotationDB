@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from sqlalchemy import create_engine, inspect, func
+from sqlalchemy import MetaData, create_engine, inspect, func
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
@@ -66,8 +66,9 @@ class DynamicAnnotationDB:
         self._cached_session = None
 
     def get_table_sql_metadata(self, table_name: str):
-        self.base.metadata.reflect(bind=self.engine)
-        return self.base.metadata.tables[table_name]
+        metadata = MetaData()
+        metadata.reflect(bind=self.engine)
+        return metadata.tables[table_name]
 
     def get_table_metadata(self, table_name: str, filter_col: str = None):
         data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
@@ -163,8 +164,6 @@ class DynamicAnnotationDB:
         return [m.table_name for m in metadata]
 
     def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:
-        self.mapped_base = automap_base()
-        self.mapped_base.prepare(self._engine, reflect=True)
         return self.mapped_base.classes[table_name]
 
     def _get_model_columns(self, table_name: str) -> List[tuple]:
@@ -246,3 +245,4 @@ class DynamicAnnotationDB:
         """
 
         return table_name in self._cached_tables
+
