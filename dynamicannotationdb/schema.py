@@ -39,7 +39,7 @@ class DynamicSchemaClient:
         schema_type: str,
         segmentation_source: str,
         table_metadata: dict = None,
-        with_crud_columns: bool = True,
+        with_crud_columns: bool = False,
     ):
         return em_models.make_model_from_schema(
             table_name,
