@@ -3,12 +3,16 @@ import logging
 from dynamicannotationdb.database import DynamicAnnotationDB
 from dynamicannotationdb.models import AnnoMetadata
 from dynamicannotationdb.schema import DynamicSchemaClient
+from emannotationschemas.errors import UnknownAnnotationTypeException
 from emannotationschemas.migrations.run import run_migration
 from geoalchemy2.types import Geometry
 from psycopg2.errors import DuplicateSchema
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.pool import NullPool
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 # SQL commands
@@ -17,7 +21,7 @@ def alter_column_name(table_name: str, current_col_name: str, new_col_name: str)
 
 
 def add_column(table_name: str, column_spec: str) -> str:
-    return f"ALTER TABLE {table_name} ADD IF NOT EXISTS {column_spec}"
+    return f"ALTER TABLE {table_name} ADD  IF NOT EXISTS {column_spec}"
 
 
 def add_primary_key(table_name: str, column_name: str):
@@ -104,6 +108,10 @@ class DynamicMigration:
         return target_tables, schema_tables
 
     def _get_target_schema_types(self, schema_type: str):
+        try:
+            schema = self.schema_client.get_schema(schema_type)
+        except UnknownAnnotationTypeException as e:
+            logging.info(f"Table {schema_type} is not an em annotation schemas: {e}")
         return (
             self.target_database.cached_session.query(
                 AnnoMetadata.table_name, AnnoMetadata.schema_type
@@ -126,7 +134,7 @@ class DynamicMigration:
     def get_schema_from_migration(self, schema_table_name: str):
         return self.schema_database.get_table_sql_metadata(schema_table_name)
 
-    def upgrade_table_from_schema(self, table_name: str, dry_run: bool = True):
+    def upgrade_table_from_schema(self, table_name: str, model: None, dry_run: bool = True):
         """Migrate a schema if the schema model is present in the database.
         If there are missing columns in the database it will add new
         columns.
@@ -163,9 +171,15 @@ class DynamicMigration:
 
         # get missing table indexes
         index_sql_commands = self.get_missing_indexes(table_name)
-
+        migration_map = {
+            "Columns to add": migrations,
+            "Indexes to create": index_sql_commands,
+        }
         if dry_run:
-            return migrations, index_sql_commands
+            logging.info(
+                "Dry run mode. Set dry run to False to apply changes to the db."
+            )
+            return migration_map
         try:
             engine = self.target_database.engine
             with engine.connect() as conn:
@@ -175,10 +189,10 @@ class DynamicMigration:
                         conn.execute(command)
                 if index_sql_commands:
                     for index_name, sql_command in index_sql_commands.items():
-                        logging.info(f"Creating index: {index_name}")
+                        logging.info(f"Creating index: {sql_command}")
                         conn.execute(sql_command)
-
-            return migrations, index_sql_commands
+            self.target_database.base.metadata.reflect()
+            return migration_map
         except Exception as e:
             self.target_database.cached_session.rollback()
             raise e
@@ -213,12 +227,8 @@ class DynamicMigration:
 
         formatted_schema_columns = self._column_names(schema_cols)
         formatted_db_columns = self._column_names(db_cols)
-
-        target_metadata = MetaData(bind=self.target_db_sql_uri, reflect=True)
-        db_model = target_metadata.tables[table_name]
-
-        schema_metadata = MetaData(bind=self.schema_sql_uri, reflect=True)
-        schema_model = schema_metadata.tables[schema]
+        db_model = self.target_database.get_table_sql_metadata(table_name)
+        schema_model = self.schema_database.get_table_sql_metadata(schema)
 
         columns_to_create = set(formatted_schema_columns) - set(formatted_db_columns)
         return db_model, schema_model, columns_to_create
@@ -413,7 +423,7 @@ class DynamicMigration:
             raise (e)
         return True
 
-    def get_missing_indexes(self, table_name: str):
+    def get_missing_indexes(self, table_name: str, model=None):
         """Add missing indexes by comparing current table and
         schema table db indexes. Will add missing indices from model to table.
 
@@ -428,11 +438,12 @@ class DynamicMigration:
         table_schema_type = self._get_table_schema_type(table_name)
         table_metadata = self.extract_target_id(current_indexes)
 
-        model = self.schema_client.create_annotation_model(
-            f"ref_{table_name}", table_schema_type, table_metadata, True
-        )
+        if not model:
+            schema_model = self.get_schema_from_migration(table_schema_type)
+            model = self.schema_client.create_annotation_model(
+                f"ref_{table_name}", table_schema_type, table_metadata, True
+            )
         model_indexes = self.get_index_from_model(table_name, model)
-
         missing_indexes = set(model_indexes) - set(current_indexes)
         commands = {}
         for index in missing_indexes:
