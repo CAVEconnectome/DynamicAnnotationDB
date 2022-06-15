@@ -66,9 +66,8 @@ class DynamicAnnotationDB:
         self._cached_session = None
 
     def get_table_sql_metadata(self, table_name: str):
-        metadata = MetaData()
-        metadata.reflect(bind=self.engine)
-        return metadata.tables[table_name]
+        self.base.metadata.reflect(bind=self.engine)
+        return self.base.metadata.tables[table_name]
 
     def get_table_metadata(self, table_name: str, filter_col: str = None):
         data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
