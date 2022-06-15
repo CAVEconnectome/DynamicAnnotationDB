@@ -10,10 +10,11 @@ from psycopg2.errors import DuplicateSchema
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.pool import NullPool
+from sqlalchemy import MetaData, Table
+import logging
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
+logger.setLevel(logging.DEBUG)
 
 # SQL commands
 def alter_column_name(table_name: str, current_col_name: str, new_col_name: str) -> str:
@@ -21,7 +22,7 @@ def alter_column_name(table_name: str, current_col_name: str, new_col_name: str)
 
 
 def add_column(table_name: str, column_spec: str) -> str:
-    return f"ALTER TABLE {table_name} ADD  IF NOT EXISTS {column_spec}"
+    return f"ALTER TABLE {table_name} ADD IF NOT EXISTS {column_spec}"
 
 
 def add_primary_key(table_name: str, column_name: str):
@@ -134,7 +135,7 @@ class DynamicMigration:
     def get_schema_from_migration(self, schema_table_name: str):
         return self.schema_database.get_table_sql_metadata(schema_table_name)
 
-    def upgrade_table_from_schema(self, table_name: str, model: None, dry_run: bool = True):
+    def upgrade_table_from_schema(self, table_name: str, dry_run: bool = True):
         """Migrate a schema if the schema model is present in the database.
         If there are missing columns in the database it will add new
         columns.
@@ -145,10 +146,6 @@ class DynamicMigration:
             table to migrate.
         dry_run : bool
             return a map of columns to add, does not affect the database.
-        Raises
-        ------
-        NotImplementedError
-            _description_
         """
         if table_name not in self.target_database._get_existing_table_names():
             raise f"{table_name} not found."
@@ -157,6 +154,7 @@ class DynamicMigration:
         ddl_client = self.target_database.engine.dialect.ddl_compiler(
             self.target_database.engine.dialect, None
         )
+
         migrations = {}
         for column in columns_to_create:
             model_column = model_table.c.get(column)
@@ -171,10 +169,14 @@ class DynamicMigration:
 
         # get missing table indexes
         index_sql_commands = self.get_missing_indexes(table_name)
-        migration_map = {
-            "Columns to add": migrations,
-            "Indexes to create": index_sql_commands,
-        }
+        if index_sql_commands:
+            migrations["Indexes"] = index_sql_commands
+
+        migration_map = {}
+
+        if migrations:
+            migration_map = {"Table": table_name, "Columns": migrations}
+
         if dry_run:
             logging.info(
                 "Dry run mode. Set dry run to False to apply changes to the db."
@@ -210,7 +212,8 @@ class DynamicMigration:
         migrations = []
         for table in tables:
             migration_map = self.upgrade_table_from_schema(table, dry_run)
-            migrations.append(migration_map)
+            if migration_map:
+                migrations.append(migration_map)
         return migrations
 
     def get_table_diff(self, table_name):
@@ -275,7 +278,7 @@ class DynamicMigration:
 
         index_map = {}
         if pk_columns:
-            pkey_name = pk_columns.get("name")
+            pkey_name = pk_columns.get("name").lower()
             pk_name = {"primary_key_name": pkey_name}
             if pk_name["primary_key_name"]:
                 pk = {
@@ -288,7 +291,7 @@ class DynamicMigration:
         if indexed_columns:
             for index in indexed_columns:
                 dialect_options = index.get("dialect_options", None)
-                index_name = index["name"]
+                index_name = index["name"].lower()
                 indx_map = {
                     "column_name": index["column_names"][0],
                     "index_name": index_name,
@@ -307,7 +310,7 @@ class DynamicMigration:
                 index_map[index_name] = indx_map
         if foreign_keys:
             for foreign_key in foreign_keys:
-                foreign_key_name = foreign_key["name"]
+                foreign_key_name = foreign_key["name"].lower()
                 fk_data = {
                     "column_name": foreign_key["referred_columns"][0],
                     "type": "foreign_key",
@@ -333,7 +336,7 @@ class DynamicMigration:
         index_map = {}
         for column in model.columns:
             if column.primary_key:
-                pk_index_name = f"{table_name}_pkey"
+                pk_index_name = f"{table_name}_pkey".lower()
                 pk = {
                     "column_name": column.name,
                     "index_name": pk_index_name,
@@ -350,14 +353,14 @@ class DynamicMigration:
                 }
                 index_map[index_name] = indx_map
             if isinstance(column.type, Geometry):
-                spatial_index_name = f"idx_{table_name}_{column.name}"
+                sptial_index_name = f"idx_{table_name}_{column.name}".lower()
                 spatial_index_map = {
                     "column_name": column.name,
-                    "index_name": spatial_index_name,
+                    "index_name": sptial_index_name,
                     "type": "spatial_index",
                     "dialect_options": {"postgresql_using": "gist"},
                 }
-                index_map[spatial_index_name] = spatial_index_map
+                index_map[sptial_index_name] = spatial_index_map
             if column.foreign_keys:
 
                 metadata_obj = MetaData()
@@ -370,14 +373,17 @@ class DynamicMigration:
                         target_table_name,
                         target_column,
                     ) = foreign_key.target_fullname.split(".")
+                    foreign_key_name = foreign_key.name.lower()
+
                     foreign_key_map = {
                         "type": "foreign_key",
-                        "foreign_key_name": foreign_key.name,
+                        "column_name": foreign_key.constraint.column_keys[0],
+                        "foreign_key_name": foreign_key_name,
                         "foreign_key_table": target_table_name,
                         "foreign_key_column": foreign_key.constraint.column_keys[0],
                         "target_column": target_column,
                     }
-                    index_map[foreign_key.name] = foreign_key_map
+                    index_map[foreign_key_name] = foreign_key_map
         return index_map
 
     def drop_table_indexes(self, table_name: str):
@@ -437,7 +443,6 @@ class DynamicMigration:
         current_indexes = self.get_table_indexes(table_name, "target")
         table_schema_type = self._get_table_schema_type(table_name)
         table_metadata = self.extract_target_id(current_indexes)
-
         if not model:
             schema_model = self.get_schema_from_migration(table_schema_type)
             model = self.schema_client.create_annotation_model(
@@ -445,7 +450,17 @@ class DynamicMigration:
             )
         model_indexes = self.get_index_from_model(table_name, model)
         missing_indexes = set(model_indexes) - set(current_indexes)
+
+        existing_indexes = current_indexes.values()
+        index_list = [index["column_name"] for index in existing_indexes]
+        missing_indexes = [
+            key
+            for key, value in model_indexes.items()
+            if value["column_name"] not in index_list
+        ]
+
         commands = {}
+
         for index in missing_indexes:
             index_type = model_indexes[index]["type"]
             column_name = model_indexes[index]["column_name"]
@@ -469,7 +484,7 @@ class DynamicMigration:
                     target_column,
                 )
 
-                missing_indexes.add(foreign_key_name)
+                missing_indexes.append(foreign_key_name)
             index_key = f"{column_name}_{index_type}"
 
             commands[index_key] = command
