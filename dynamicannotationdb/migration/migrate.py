@@ -169,13 +169,14 @@ class DynamicMigration:
 
         # get missing table indexes
         index_sql_commands = self.get_missing_indexes(table_name)
-        if index_sql_commands:
-            migrations["Indexes"] = index_sql_commands
 
         migration_map = {}
 
         if migrations:
             migration_map = {"Table": table_name, "Columns": migrations}
+
+        if index_sql_commands:
+            migration_map["Indexes"] = index_sql_commands
 
         if dry_run:
             logging.info(
@@ -191,7 +192,7 @@ class DynamicMigration:
                         conn.execute(command)
                 if index_sql_commands:
                     for index_name, sql_command in index_sql_commands.items():
-                        logging.info(f"Creating index: {sql_command}")
+                        logging.info(f"Creating index: {index_name}")
                         conn.execute(sql_command)
             self.target_database.base.metadata.reflect()
             return migration_map
