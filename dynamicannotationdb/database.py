@@ -80,6 +80,10 @@ class DynamicAnnotationDB:
         else:
             return result[0]
 
+    def get_valid_table_names(self) -> List[str]:
+        metadata = self.cached_session.query(AnnoMetadata).all()
+        return [m.table_name for m in metadata if m.valid == True]
+
     def get_annotation_table_size(self, table_name: str) -> int:
         """Get the number of annotations in a table
 
