@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from sqlalchemy import create_engine, inspect, func
+from sqlalchemy import MetaData, create_engine, inspect, func
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
@@ -79,6 +79,10 @@ class DynamicAnnotationDB:
             return self.get_automap_items(result)
         else:
             return result[0]
+
+    def get_valid_table_names(self) -> List[str]:
+        metadata = self.cached_session.query(AnnoMetadata).all()
+        return [m.table_name for m in metadata if m.valid == True]
 
     def get_annotation_table_size(self, table_name: str) -> int:
         """Get the number of annotations in a table
@@ -163,8 +167,6 @@ class DynamicAnnotationDB:
         return [m.table_name for m in metadata]
 
     def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:
-        self.mapped_base = automap_base()
-        self.mapped_base.prepare(self._engine, reflect=True)
         return self.mapped_base.classes[table_name]
 
     def _get_model_columns(self, table_name: str) -> List[tuple]:
@@ -246,3 +248,4 @@ class DynamicAnnotationDB:
         """
 
         return table_name in self._cached_tables
+

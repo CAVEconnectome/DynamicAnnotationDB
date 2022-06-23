@@ -26,7 +26,7 @@ class DynamicSchemaClient:
         table_metadata: dict = None,
         with_crud_columns: bool = True,
     ):
-        return em_models.make_annotation_model(
+        return em_models.make_model_from_schema(
             table_name,
             schema_type,
             table_metadata=table_metadata,
@@ -39,9 +39,9 @@ class DynamicSchemaClient:
         schema_type: str,
         segmentation_source: str,
         table_metadata: dict = None,
-        with_crud_columns: bool = True,
+        with_crud_columns: bool = False,
     ):
-        return em_models.make_segmentation_model(
+        return em_models.make_model_from_schema(
             table_name,
             schema_type,
             segmentation_source,
