@@ -13,7 +13,7 @@ from .errors import (
 from .key_utils import build_segmentation_table_name
 from .models import SegmentationMetadata
 from .schema import DynamicSchemaClient
-
+from .errors import TableNameNotFound
 
 class DynamicSegmentationClient:
     def __init__(self, sql_url: str) -> None:
@@ -101,6 +101,20 @@ class DynamicSegmentationClient:
             raise AttributeError(
                 f"No table found with name '{table_name}'. Error: {e}"
             ) from e
+
+    def get_segmentation_table_metadata(self, table_name: str, pcg_table_name: str):
+        seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
+        result = (
+            self.db.cached_session.query(SegmentationMetadata)
+            .filter(SegmentationMetadata.table_name == seg_table_name)
+            .one()
+        )
+        if not result:
+            raise TableNameNotFound(
+                f"Error: No table name exists with name {table_name}."
+            )
+        return self.db.get_automap_items(result)
+
 
     def get_linked_annotations(
             self, table_name: str, pcg_table_name: str, annotation_ids: List[int]
