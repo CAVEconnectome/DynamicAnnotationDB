@@ -113,8 +113,8 @@ class DynamicAnnotationDB:
         if filter_valid:
             row_count = (
                 self.cached_session.query(func.count(model.id))
-                    .filter(model.valid is True)
-                    .scalar()
+                .filter(model.valid is True)
+                .scalar()
             )
         else:
             row_count = self.cached_session.query(func.count(model.id)).scalar()
@@ -167,6 +167,8 @@ class DynamicAnnotationDB:
         return [m.table_name for m in metadata]
 
     def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:
+        self.mapped_base = automap_base()
+        self.mapped_base.prepare(self._engine, reflect=True)
         return self.mapped_base.classes[table_name]
 
     def _get_model_columns(self, table_name: str) -> List[tuple]:
@@ -248,4 +250,3 @@ class DynamicAnnotationDB:
         """
 
         return table_name in self._cached_tables
-
