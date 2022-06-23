@@ -1,2 +1,2 @@
-__version__ = "4.0.3"
+__version__ = "5.0.0"
 from .interface import DynamicAnnotationInterface
