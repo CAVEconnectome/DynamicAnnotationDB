@@ -1,16 +1,63 @@
-from sqlalchemy import (
-    Column,
-    Boolean,
-    String,
-    UniqueConstraint,
-    Integer,
-    DateTime,
-    Text,
-    ForeignKey,
-    Float,
-    CheckConstraint,
-)
 from emannotationschemas.models import Base
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+
+# Models that will be created in the 'materialized' database.
+MatBase = declarative_base()
+# Models that will be created in the 'annotation' database.
+AnnotationBase = declarative_base()
+
+
+class AnalysisDataBase(AnnotationBase):
+    __tablename__ = "analysisdatabase"
+    id = Column(Integer, primary_key=True)
+    database = Column(String(100), nullable=False)
+    materialize = Column(Boolean, nullable=False, default=True)
+
+
+class AnalysisVersion(Base):
+    __tablename__ = "analysisversion"
+    id = Column(Integer, primary_key=True)
+    datastack = Column(String(100), nullable=False)
+    version = Column(Integer, nullable=False)
+    time_stamp = Column(DateTime, nullable=False)
+    valid = Column(Boolean)
+    expires_on = Column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"{self.datastack}__mat{self.version}"
+
+
+class AnalysisTable(Base):
+    __tablename__ = "analysistables"
+    id = Column(Integer, primary_key=True)
+    aligned_volume = Column(String(100), nullable=False)
+    schema = Column(String(100), nullable=False)
+    table_name = Column(String(100), nullable=False)
+    valid = Column(Boolean)
+    created = Column(DateTime, nullable=False)
+    analysisversion_id = Column(Integer, ForeignKey("analysisversion.id"))
+    analysisversion = relationship("AnalysisVersion")
+
+
+class MaterializedMetadata(MatBase):
+    __tablename__ = "materializedmetadata"
+    id = Column(Integer, primary_key=True)
+    schema = Column(String(100), nullable=False)
+    table_name = Column(String(100), nullable=False)
+    row_count = Column(Integer, nullable=False)
+    materialized_timestamp = Column(DateTime, nullable=False)
 
 
 class AnnoMetadata(Base):
@@ -48,9 +95,11 @@ class SegmentationMetadata(Base):
 
 class CombinedTableMetadata(Base):
     __tablename__ = "combined_table_metadata"
-    __table_args__ = (CheckConstraint(
-        "reference_table <> annotation_table", name="not_self_referenced"
-    ),)
+    __table_args__ = (
+        CheckConstraint(
+            "reference_table <> annotation_table", name="not_self_referenced"
+        ),
+    )
 
     id = Column(Integer, primary_key=True)
     reference_table = Column(

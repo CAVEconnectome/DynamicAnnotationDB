@@ -1,23 +1,3 @@
-def build_table_id(aligned_volume: str, table_name: str) -> str:
-    """Combines aligned_volume name and specified table name to
-    create specific table id
-
-
-    Parameters
-    ----------
-    aligned_volume : str
-        name of aligned volume
-    table_name : str
-        name of table assigned to an aligned volume
-
-    Returns
-    -------
-    str
-        formatted table_id
-    """
-    return f"{aligned_volume}__{table_name}"
-
-
 def build_segmentation_table_name(
     annotation_table_name: str, segmentation_source: str
 ) -> str:
@@ -28,7 +8,7 @@ def build_segmentation_table_name(
     ----------
     annotation_table_name : str
         exiting annotation table name
-    pcg_table_name : str
+    segmentation_source : str
         name of chunkedgraph table
 
     Returns

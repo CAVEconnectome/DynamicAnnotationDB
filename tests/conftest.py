@@ -6,9 +6,8 @@ import warnings
 import docker
 import psycopg2
 import pytest
-from dynamicannotationdb.annotation_client import DynamicAnnotationClient
-from dynamicannotationdb.interface import DynamicAnnotationInterface
-from dynamicannotationdb.materialization_client import DynamicMaterializationClient
+
+from dynamicannotationdb import DynamicAnnotationInterface
 
 logging.basicConfig(level=logging.DEBUG)
 test_logger = logging.getLogger()
@@ -37,7 +36,7 @@ def database_metadata() -> dict:
     yield {
         "postgis_docker_image": "postgis/postgis:13-master",
         "db_host": "localhost",
-        "sql_uri": f"postgresql://postgres:postgres@localhost:5432/test_volume",
+        "sql_uri": "postgresql://postgres:postgres@localhost:5432/test_volume",
     }
 
 
@@ -62,11 +61,11 @@ def postgis_server(docker_mode, database_metadata: dict) -> None:
 
     if docker_mode:
         test_logger.info(f"PULLING {postgis_docker_image} IMAGE")
+        docker_client = docker.from_env()
         try:
-            docker_client = docker.from_env()
             docker_client.images.pull(repository=postgis_docker_image)
-        except Exception:
-            test_logger.exception("Failed to pull postgres image")
+        except Exception as e:
+            test_logger.exception(f"Failed to pull postgres image {e}")
 
         container_name = f"test_postgis_server_{uuid.uuid4()}"
 
@@ -89,7 +88,7 @@ def postgis_server(docker_mode, database_metadata: dict) -> None:
             time.sleep(10)
             check_database(sql_uri)
         except Exception as e:
-            raise (e)
+            raise e
     yield
     if docker_mode:
         warnings.filterwarnings(
@@ -100,29 +99,11 @@ def postgis_server(docker_mode, database_metadata: dict) -> None:
 
 
 @pytest.fixture(scope="session")
-def dynamic_annotation_interface(postgis_server, database_metadata):
+def dadb_interface(postgis_server, database_metadata, annotation_metadata):
     sql_uri = database_metadata["sql_uri"]
-    interface = DynamicAnnotationInterface(sql_uri)
-    yield interface
-    interface.cached_session.close()
-
-
-@pytest.fixture(scope="session")
-def annotation_client(postgis_server, annotation_metadata, database_metadata):
     aligned_volume = annotation_metadata["aligned_volume"]
-    sql_uri = database_metadata["sql_uri"]
-    anno_client = DynamicAnnotationClient(aligned_volume, sql_uri)
-    yield anno_client
-    anno_client.cached_session.close()
 
-
-@pytest.fixture(scope="session")
-def materialization_client(postgis_server, annotation_metadata, database_metadata):
-    aligned_volume = annotation_metadata["aligned_volume"]
-    sql_uri = database_metadata["sql_uri"]
-    mat_client = DynamicMaterializationClient(aligned_volume, sql_uri)
-    yield mat_client
-    mat_client.cached_session.close()
+    yield DynamicAnnotationInterface(sql_uri, aligned_volume)
 
 
 def check_database(sql_uri: str) -> None:  # pragma: no cover
