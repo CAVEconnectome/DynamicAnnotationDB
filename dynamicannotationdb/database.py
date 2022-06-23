@@ -80,6 +80,10 @@ class DynamicAnnotationDB:
         else:
             return result[0]
 
+    def get_table_schema(self, table_name: str) -> str:
+        table_metadata = self.get_table_metadata(table_name)
+        return table_metadata["schema_type"]
+
     def get_valid_table_names(self) -> List[str]:
         metadata = self.cached_session.query(AnnoMetadata).all()
         return [m.table_name for m in metadata if m.valid == True]
