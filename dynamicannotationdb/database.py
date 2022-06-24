@@ -114,15 +114,11 @@ class DynamicAnnotationDB:
 
     def get_table_row_count(self, table_name: str, filter_valid: bool = False) -> int:
         model = self.cached_table(table_name)
+        query = self.cached_session.query(func.count(model.id))
         if filter_valid:
-            row_count = (
-                self.cached_session.query(func.count(model.id))
-                .filter(model.valid is True)
-                .scalar()
-            )
-        else:
-            row_count = self.cached_session.query(func.count(model.id)).scalar()
-        return row_count
+            query.filter(model.valid == True)
+
+        return query.scalar()
 
     @staticmethod
     def get_automap_items(result):
