@@ -116,7 +116,7 @@ class DynamicAnnotationDB:
         model = self.cached_table(table_name)
         query = self.cached_session.query(func.count(model.id))
         if filter_valid:
-            query.filter(model.valid == True)
+            query = self.cached_session.query(func.count(model.id)).filter(model.valid == True)
 
         return query.scalar()
 
