@@ -112,15 +112,27 @@ class DynamicAnnotationDB:
         model = self.cached_table(table_name)
         return self.cached_session.query(func.min(model.id)).scalar()
 
-    def get_table_row_count(self, table_name: str, filter_valid: bool = False) -> int:
-        model = self.cached_table(table_name)
-        query = self.cached_session.query(func.count(model.id))
-        if filter_valid:
-            query = self.cached_session.query(func.count(model.id)).filter(
-                model.valid == True
-            )
+    def get_table_row_count(
+        self, table_name: str, filter_valid: bool = False, filter_timestamp: str = None
+    ) -> int:
+        """Get row counts. Optionally can filter by row validity and
+        by timestamp.
 
-        return query.scalar()
+        Args:
+            table_name (str): Name of table
+            filter_valid (bool, optional): Filter only valid rows. Defaults to False.
+            filter_timestamp (None, optional): Filter rows up to timestamp . Defaults to False.
+
+        Returns:
+            int: number of rows
+        """
+        model = self.cached_table(table_name)
+        sql_query = self.cached_session.query(func.count(model.id))
+        if filter_valid:
+            sql_query = sql_query.filter(model.valid == True)
+        if filter_timestamp:
+            sql_query = sql_query.filter(model.created <= filter_timestamp)
+        return sql_query.scalar()
 
     @staticmethod
     def get_automap_items(result):
