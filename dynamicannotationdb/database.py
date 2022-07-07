@@ -116,7 +116,9 @@ class DynamicAnnotationDB:
         model = self.cached_table(table_name)
         query = self.cached_session.query(func.count(model.id))
         if filter_valid:
-            query = self.cached_session.query(func.count(model.id)).filter(model.valid == True)
+            query = self.cached_session.query(func.count(model.id)).filter(
+                model.valid == True
+            )
 
         return query.scalar()
 
@@ -155,7 +157,7 @@ class DynamicAnnotationDB:
             )
         return existing_tables
 
-    def _get_existing_table_names(self) -> List[str]:
+    def _get_existing_table_names(self, filter_valid: bool = False) -> List[str]:
         """Collects table_names keys of existing tables
 
         Returns
@@ -163,7 +165,10 @@ class DynamicAnnotationDB:
         list
             List of table_names
         """
-        metadata = self.cached_session.query(AnnoMetadata).all()
+        stmt = self.cached_session.query(AnnoMetadata)
+        if filter_valid:
+            stmt = stmt.filter(AnnoMetadata.valid == True)
+        metadata = stmt.all()
         return [m.table_name for m in metadata]
 
     def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:

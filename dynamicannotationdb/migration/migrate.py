@@ -209,7 +209,7 @@ class DynamicMigration:
         e
             SQL Error
         """
-        tables = self.target_database._get_existing_table_names()
+        tables = self.target_database._get_existing_table_names(filter_valid=True)
         migrations = []
         for table in tables:
             migration_map = self.upgrade_table_from_schema(table, dry_run)
