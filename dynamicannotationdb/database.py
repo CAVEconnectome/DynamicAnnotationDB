@@ -130,7 +130,7 @@ class DynamicAnnotationDB:
         sql_query = self.cached_session.query(func.count(model.id))
         if filter_valid:
             sql_query = sql_query.filter(model.valid == True)
-        if filter_timestamp:
+        if filter_timestamp and hasattr(model, "created"):
             sql_query = sql_query.filter(model.created <= filter_timestamp)
         return sql_query.scalar()
 
