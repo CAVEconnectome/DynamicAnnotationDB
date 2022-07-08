@@ -1,6 +1,7 @@
 import logging
 from sqlalchemy import Table
 import pytest
+import datetime
 
 
 def test_get_table_metadata(dadb_interface, annotation_metadata):
@@ -13,7 +14,7 @@ def test_get_table_metadata(dadb_interface, annotation_metadata):
     assert metadata["user_id"] == "foo@bar.com"
     assert metadata["description"] == "some description"
     assert metadata["voxel_resolution_x"] == 4.0
-    
+
     # test for missing column
     with pytest.raises(AttributeError) as e:
         bad_return = dadb_interface.database.get_table_metadata(
@@ -44,6 +45,32 @@ def test__get_existing_table_ids(dadb_interface):
     table_names = dadb_interface.database._get_existing_table_names()
     assert isinstance(table_names, list)
 
+
+def test_get_table_row_count(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    result = dadb_interface.database.get_table_row_count(table_name)
+    logging.info(f"{table_name} row count: {result}")
+    assert result == 3
+
+def test_get_table_valid_row_count(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+
+    result = dadb_interface.database.get_table_row_count(
+        table_name, filter_valid=True
+    )
+    logging.info(f"{table_name} valid row count: {result}")
+    assert result == 2
+
+
+def test_get_table_valid_timestamp_row_count(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+    ts = datetime.datetime.utcnow() - datetime.timedelta(days=5) 
+    result = dadb_interface.database.get_table_row_count(
+        table_name, filter_valid=True, filter_timestamp=str(ts)
+    )
+    logging.info(f"{table_name} valid and timestamped row count: {result}")
+    assert result == 0 
 
 def test_get_annotation_table_size(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]
