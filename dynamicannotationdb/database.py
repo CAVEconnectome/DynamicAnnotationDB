@@ -236,8 +236,7 @@ class DynamicAnnotationDB:
             )
             return True
         except KeyError as key_error:
-            if table_name in self._get_existing_table_names():
-                logging.error(f"Could not load table: {key_error}")
+            logging.error(f"Could not load table: {key_error}")
             return False
 
     def _is_cached(self, table_name: str) -> bool:
