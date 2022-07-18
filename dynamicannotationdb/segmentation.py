@@ -104,11 +104,15 @@ class DynamicSegmentationClient:
 
     def get_segmentation_table_metadata(self, table_name: str, pcg_table_name: str):
         seg_table_name = build_segmentation_table_name(table_name, pcg_table_name)
-        result = (
-            self.db.cached_session.query(SegmentationMetadata)
-            .filter(SegmentationMetadata.table_name == seg_table_name)
-            .one()
-        )
+        try:
+            result = (
+                self.db.cached_session.query(SegmentationMetadata)
+                .filter(SegmentationMetadata.table_name == seg_table_name)
+                .one()
+            )
+        except Exception as e:
+            self.db.cached_session.rollback()
+            
         if not result:
             raise TableNameNotFound(
                 f"Error: No table name exists with name {table_name}."
