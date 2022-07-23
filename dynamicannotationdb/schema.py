@@ -1,9 +1,9 @@
-from typing import Tuple, Sequence
+from typing import Sequence, Tuple
 
 from emannotationschemas import get_schema
 from emannotationschemas import models as em_models
-from emannotationschemas.flatten import flatten_dict
-from emannotationschemas.schemas.base import ReferenceAnnotation
+from emannotationschemas.flatten import create_flattened_schema, flatten_dict
+from emannotationschemas.schemas.base import ReferenceAnnotation, SegmentationField
 from marshmallow import EXCLUDE, Schema
 
 from .errors import SelfReferenceTableError, TableNameNotFound
@@ -98,6 +98,20 @@ class DynamicSchemaClient:
     @staticmethod
     def flattened_schema_data(data):
         return flatten_dict(data)
+
+    @staticmethod
+    def is_segmentation_table_required(schema_type: str) -> bool:
+        """Check if schema contains any 'Segmentation Fields' column
+        types and returns boolean"""
+        schema = get_schema(schema_type)
+        flat_schema = create_flattened_schema(schema)
+        segmentation_columns = {
+            key: field
+            for key, field in flat_schema._declared_fields.items()
+            if isinstance(field, SegmentationField)
+        }
+
+        return bool(segmentation_columns)
 
     @staticmethod
     def split_flattened_schema(schema_type: str):
