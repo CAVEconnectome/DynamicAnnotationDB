@@ -110,15 +110,11 @@ class DynamicSegmentationClient:
                 .filter(SegmentationMetadata.table_name == seg_table_name)
                 .one()
             )
+            return self.db.get_automap_items(result)
         except Exception as e:
             self.db.cached_session.rollback()
-            
-        if not result:
-            raise TableNameNotFound(
-                f"Error: No table name exists with name {table_name}."
-            )
-        return self.db.get_automap_items(result)
-
+            return None
+        
 
     def get_linked_annotations(
             self, table_name: str, pcg_table_name: str, annotation_ids: List[int]
