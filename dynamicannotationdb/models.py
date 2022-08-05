@@ -34,6 +34,11 @@ class AnalysisVersion(Base):
     time_stamp = Column(DateTime, nullable=False)
     valid = Column(Boolean)
     expires_on = Column(DateTime, nullable=True)
+    parent_version = Column(
+        Integer,
+        ForeignKey("analysisversion.id"),
+        nullable=True,
+    )
 
     def __repr__(self):
         return f"{self.datastack}__mat{self.version}"
