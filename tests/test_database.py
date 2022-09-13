@@ -53,24 +53,24 @@ def test_get_table_row_count(dadb_interface, annotation_metadata):
     logging.info(f"{table_name} row count: {result}")
     assert result == 3
 
+
 def test_get_table_valid_row_count(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]
 
-    result = dadb_interface.database.get_table_row_count(
-        table_name, filter_valid=True
-    )
+    result = dadb_interface.database.get_table_row_count(table_name, filter_valid=True)
     logging.info(f"{table_name} valid row count: {result}")
     assert result == 2
 
 
 def test_get_table_valid_timestamp_row_count(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]
-    ts = datetime.datetime.utcnow() - datetime.timedelta(days=5) 
+    ts = datetime.datetime.utcnow() - datetime.timedelta(days=5)
     result = dadb_interface.database.get_table_row_count(
         table_name, filter_valid=True, filter_timestamp=str(ts)
     )
     logging.info(f"{table_name} valid and timestamped row count: {result}")
-    assert result == 0 
+    assert result == 0
+
 
 def test_get_annotation_table_size(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]

@@ -96,6 +96,36 @@ class DynamicSchemaClient:
         )
 
     @staticmethod
+    def get_split_models(
+        table_name: str,
+        schema_type: str,
+        segmentation_source: str,
+        table_metadata: dict = None,
+        with_crud_columns: bool = True,
+    ):
+        """Return the annotation and segmentation models from a
+        supplied schema. If the schema type requires no segmentation fields
+        return only the annotation model and None for the segmentation model.
+        """
+        anno_model = em_models.make_model_from_schema(
+            table_name=table_name,
+            schema_type=schema_type,
+            segmentation_source=None,
+            table_metadata=table_metadata,
+            with_crud_columns=with_crud_columns,
+        )
+        if DynamicSchemaClient.is_segmentation_table_required(schema_type):
+            seg_model = em_models.make_model_from_schema(
+                table_name=table_name,
+                schema_type=schema_type,
+                segmentation_source=segmentation_source,
+                table_metadata=table_metadata,
+                with_crud_columns=with_crud_columns,
+            )
+            return anno_model, seg_model
+        return anno_model, None
+
+    @staticmethod
     def flattened_schema_data(data):
         return flatten_dict(data)
 
@@ -175,9 +205,7 @@ class DynamicSchemaClient:
                         f"{reference_table} must target a different table not {table_name}"
                     )
                 if value not in existing_tables:
-                    raise TableNameNotFound(
-                        f"Reference table target: '{value}' does not exist"
-                    )
+                    raise TableNameNotFound(value)
                 reference_table = value
             elif param == "track_target_id_updates":
                 track_updates = value
