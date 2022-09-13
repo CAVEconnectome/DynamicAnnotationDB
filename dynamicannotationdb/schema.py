@@ -103,6 +103,10 @@ class DynamicSchemaClient:
         table_metadata: dict = None,
         with_crud_columns: bool = True,
     ):
+        """Return the annotation and segmentation models from a
+        supplied schema. If the schema type requires no segmentation fields
+        return only the annotation model and None for the segmentation model.
+        """
         anno_model = em_models.make_model_from_schema(
             table_name=table_name,
             schema_type=schema_type,
