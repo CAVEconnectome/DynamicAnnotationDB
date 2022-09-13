@@ -41,6 +41,28 @@ def test_create_reference_annotation_model(dadb_interface):
     assert isinstance(valid_ref_schema, DeclarativeMeta)
 
 
+def test_get_split_model(dadb_interface):
+    anno_model, seg_model = dadb_interface.schema.get_split_models(
+        "test_synapse_2", "synapse", "test_annodb"
+    )
+
+    assert isinstance(anno_model, DeclarativeMeta)
+    assert isinstance(seg_model, DeclarativeMeta)
+
+
+def test_get_split_model_with_no_seg_columns(dadb_interface):
+    table_metadata = {"reference_table": "test_synapse_2"}
+    anno_model, seg_model = dadb_interface.schema.get_split_models(
+        table_name="test_simple_group",
+        schema_type="reference_simple_group",
+        segmentation_source="test_annodb",
+        table_metadata=table_metadata,
+    )
+
+    assert isinstance(anno_model, DeclarativeMeta)
+    assert seg_model == None
+
+
 def test_create_flat_model(dadb_interface):
     valid_ref_schema = dadb_interface.schema.create_flat_model(
         "test_flat_table_1",
