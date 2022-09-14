@@ -191,9 +191,7 @@ class DynamicAnnotationDB:
         """
         db_columns = self.inspector.get_columns(table_name)
         if not db_columns:
-            raise TableNameNotFound(
-                f"Error: No table name exists with name {table_name}."
-            )
+            raise TableNameNotFound(table_name)
         return [(column["name"], column["type"]) for column in db_columns]
 
     def cached_table(self, table_name: str) -> DeclarativeMeta:

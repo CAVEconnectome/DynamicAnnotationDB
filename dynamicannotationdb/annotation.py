@@ -123,7 +123,7 @@ class DynamicAnnotationClient:
         self.db.base.metadata.tables[AnnotationModel.__name__].create(
             bind=self.db.engine
         )
-        creation_time = datetime.datetime.now()
+        creation_time = datetime.datetime.utcnow()
 
         metadata_dict = {
             "description": description,
@@ -211,7 +211,7 @@ class DynamicAnnotationClient:
                 .filter(AnnoMetadata.table_name == table_name)
                 .first()
         )
-        metadata.deleted = datetime.datetime.now()
+        metadata.deleted = datetime.datetime.utcnow()
         self.db.commit_session()
         return True
 
@@ -255,7 +255,7 @@ class DynamicAnnotationClient:
             if annotation.get("id"):
                 annotation_data["id"] = annotation["id"]
             if hasattr(AnnotationModel, "created"):
-                annotation_data["created"] = datetime.datetime.now()
+                annotation_data["created"] = datetime.datetime.utcnow()
             annotation_data["valid"] = True
             formatted_anno_data.append(annotation_data)
 
@@ -348,7 +348,7 @@ class DynamicAnnotationClient:
         )
 
         if hasattr(AnnotationModel, "created"):
-            new_annotation["created"] = datetime.datetime.now()
+            new_annotation["created"] = datetime.datetime.utcnow()
         if hasattr(AnnotationModel, "valid"):
             new_annotation["valid"] = True
 
@@ -375,7 +375,7 @@ class DynamicAnnotationClient:
             self.db.cached_session.add(new_data)
             self.db.cached_session.flush()
 
-            deleted_time = datetime.datetime.now()
+            deleted_time = datetime.datetime.utcnow()
             old_anno.deleted = deleted_time
             old_anno.superceded_id = new_data.id
             old_anno.valid = False
@@ -410,7 +410,7 @@ class DynamicAnnotationClient:
         )
         deleted_ids = []
         if annotations:
-            deleted_time = datetime.datetime.now()
+            deleted_time = datetime.datetime.utcnow()
 
             for annotation in annotations:
                 if hasattr(AnnotationModel, "target_id"):

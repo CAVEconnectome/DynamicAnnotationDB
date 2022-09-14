@@ -9,7 +9,7 @@ from alembic.config import Config
 from alembic.runtime import migration
 
 
-def run_migration(sql_url: str):
+def run_alembic_migration(sql_url: str):
     migrations_dir = os.path.dirname(os.path.realpath(__file__))
 
     config_file = os.path.join(migrations_dir, "alembic.ini")
