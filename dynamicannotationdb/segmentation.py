@@ -269,7 +269,7 @@ class DynamicSegmentationClient:
             if annotation.get("id"):
                 anno_data["id"] = annotation["id"]
             if hasattr(AnnotationModel, "created"):
-                anno_data["created"] = datetime.datetime.now()
+                anno_data["created"] = datetime.datetime.utcnow()
             anno_data["valid"] = True
             formatted_anno_data.append(anno_data)
             formatted_seg_data.append(seg_data)
@@ -322,7 +322,7 @@ class DynamicSegmentationClient:
             schema_type, annotation
         )
 
-        new_annotation["created"] = datetime.datetime.now()
+        new_annotation["created"] = datetime.datetime.utcnow()
         new_annotation["valid"] = True
 
         new_data = AnnotationModel(**new_annotation)
@@ -341,7 +341,7 @@ class DynamicSegmentationClient:
             self.db.cached_session.add(new_data)
             self.db.cached_session.flush()
 
-            deleted_time = datetime.datetime.now()
+            deleted_time = datetime.datetime.utcnow()
             old_anno.deleted = deleted_time
             old_anno.superceded_id = new_data.id
             old_anno.valid = False
@@ -384,7 +384,7 @@ class DynamicSegmentationClient:
         if not annotations:
             return None
         deleted_ids = [annotation.id for annotation in annotations]
-        deleted_time = datetime.datetime.now()
+        deleted_time = datetime.datetime.utcnow()
         for annotation in annotations:
             annotation.deleted = deleted_time
             annotation.valid = False
