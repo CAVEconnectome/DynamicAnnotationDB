@@ -101,18 +101,41 @@ class DynamicSchemaClient:
         schema_type: str,
         segmentation_source: str,
         table_metadata: dict = None,
-        with_crud_columns: bool = True,
+        anno_crud_columns: bool = True,
+        seg_crud_columns: bool = False
     ):
-        """Return the annotation and segmentation models from a
+        """ Return the annotation and segmentation models from a
         supplied schema. If the schema type requires no segmentation fields
         return only the annotation model and None for the segmentation model.
+
+        Parameters
+        ----------
+        table_name : str
+            name of the table
+        schema_type :
+            schema type, must be a valid type (hint see :func:`emannotationschemas.get_types`)
+        segmentation_source : str, optional
+            pcg table to use for root id lookups will return the
+            segmentation model if not None, by default None
+        table_metadata : dict, optional
+            optional metadata dict, by default None
+        anno_crud_columns : bool, optional
+            add additional created, deleted and superceded_id columns on
+            the annotation table model, by default True
+        seg_crud_columns : bool, optional
+            add additional created, deleted and superceded_id columns on
+            the segmentation table model, by default False
+        Returns
+        -------
+        _type_
+            _description_
         """
         anno_model = em_models.make_model_from_schema(
             table_name=table_name,
             schema_type=schema_type,
             segmentation_source=None,
             table_metadata=table_metadata,
-            with_crud_columns=with_crud_columns,
+            with_crud_columns=anno_crud_columns,
         )
         if DynamicSchemaClient.is_segmentation_table_required(schema_type):
             seg_model = em_models.make_model_from_schema(
@@ -120,7 +143,7 @@ class DynamicSchemaClient:
                 schema_type=schema_type,
                 segmentation_source=segmentation_source,
                 table_metadata=table_metadata,
-                with_crud_columns=with_crud_columns,
+                with_crud_columns=seg_crud_columns,
             )
             return anno_model, seg_model
         return anno_model, None
