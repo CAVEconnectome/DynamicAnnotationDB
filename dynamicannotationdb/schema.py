@@ -125,10 +125,6 @@ class DynamicSchemaClient:
         seg_crud_columns : bool, optional
             add additional created, deleted and superceded_id columns on
             the segmentation table model, by default False
-        Returns
-        -------
-        _type_
-            _description_
         """
         anno_model = em_models.make_model_from_schema(
             table_name=table_name,
