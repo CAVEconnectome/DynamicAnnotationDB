@@ -1,3 +1,5 @@
+import enum
+
 from emannotationschemas.models import Base
 from sqlalchemy import (
     Boolean,
@@ -9,14 +11,27 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Enum,
+    JSON
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects import postgresql
 
 # Models that will be created in the 'materialized' database.
 MatBase = declarative_base()
 # Models that will be created in the 'annotation' database.
 AnnotationBase = declarative_base()
+
+
+class StatusEnum(enum.Enum):
+    AVAILABLE = "AVAILABLE"
+    RUNNING = "RUNNING"
+    FAILED = "FAILED"
+    EXPIRED = "EXPIRED"
+
+    def fetch_values():
+        return [c.value for c in StatusEnum]
 
 
 class AnalysisDataBase(AnnotationBase):
@@ -39,6 +54,13 @@ class AnalysisVersion(Base):
         ForeignKey("analysisversion.id"),
         nullable=True,
     )
+    status = Column(
+        postgresql.ENUM(
+            "AVAILABLE", "RUNNING", "FAILED", "EXPIRED", name="version_status"
+        ),
+        nullable=True,
+    )
+    is_merged = Column(Boolean, default=True)
 
     def __repr__(self):
         return f"{self.datastack}__mat{self.version}"
@@ -56,6 +78,15 @@ class AnalysisTable(Base):
     analysisversion = relationship("AnalysisVersion")
 
 
+class VersionErrorTable(Base):
+    __tablename__ = "version_error"
+    id = Column(Integer, primary_key=True)
+    exception = Column(String, nullable=True)
+    error = Column(JSON, nullable=True)
+    analysisversion_id = Column(Integer, ForeignKey("analysisversion.id"))
+    analysisversion = relationship("AnalysisVersion")
+
+
 class MaterializedMetadata(MatBase):
     __tablename__ = "materializedmetadata"
     id = Column(Integer, primary_key=True)
@@ -63,6 +94,8 @@ class MaterializedMetadata(MatBase):
     table_name = Column(String(100), nullable=False)
     row_count = Column(Integer, nullable=False)
     materialized_timestamp = Column(DateTime, nullable=False)
+    segmentation_source = Column(String(255), nullable=True)
+    is_merged = Column(Boolean, nullable=True)
 
 
 class AnnoMetadata(Base):
