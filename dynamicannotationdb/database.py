@@ -20,15 +20,10 @@ class DynamicAnnotationDB:
         )
         self.base = Base
         self.base.metadata.bind = self._engine
-
-        table_objects = [
-            AnnoMetadata.__tablename__,
-            SegmentationMetadata.__tablename__,
-        ]
-        for table in table_objects:
-            if not self.engine.dialect.has_table(self.engine, table):
-                self.base.metadata.tables[table].create(bind=self.engine)
-
+        self.base.metadata.create_all(
+            tables=[AnnoMetadata.__table__, SegmentationMetadata.__table__],
+            checkfirst=True,
+        )
         self.mapped_base = automap_base()
         self.mapped_base.prepare(self.engine, reflect=True)
 
