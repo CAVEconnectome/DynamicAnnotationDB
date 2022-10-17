@@ -205,7 +205,8 @@ class DynamicAnnotationClient:
             "description": description,
             "user_id": user_id,
             "flat_segmentation_source": flat_segmentation_source,
-            **table_metadata,
+            "read_permission": read_permission,
+            "write_permission": write_permission,
         }
         update_dict = {
             AnnoMetadata.__dict__[k]: v for k, v in update_dict.items() if v is not None
@@ -213,7 +214,7 @@ class DynamicAnnotationClient:
         metadata.update(**update_dict)
         self.db.commit_session()
         logging.info(f"Table: {table_name} metadata updated ")
-        return metadata
+        return self.db.get_table_metadata()
 
     def create_reference_update_trigger(self, table_name, reference_table, model):
         func_name = f"{table_name}_update_reference_id"
@@ -504,7 +505,7 @@ class DynamicAnnotationClient:
                     annotation.deleted = deleted_time
                     annotation.valid = False
                 deleted_ids.append(annotation.id)
-            
+
             metadata = (
                 self.db.cached_session.query(AnnoMetadata)
                 .filter(AnnoMetadata.table_name == table_name)
