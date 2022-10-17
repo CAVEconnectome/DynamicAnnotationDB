@@ -213,7 +213,7 @@ class DynamicAnnotationClient:
         metadata.update(**update_dict)
         self.db.commit_session()
         logging.info(f"Table: {table_name} metadata updated ")
-        return table_name
+        return metadata
 
     def create_reference_update_trigger(self, table_name, reference_table, model):
         func_name = f"{table_name}_update_reference_id"
