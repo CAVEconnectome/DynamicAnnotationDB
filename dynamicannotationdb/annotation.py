@@ -340,12 +340,12 @@ class DynamicAnnotationClient:
         self.db.cached_session.flush()
         anno_ids = [anno.id for anno in annos]
 
-        metadata = (
+        (
             self.db.cached_session.query(AnnoMetadata)
             .filter(AnnoMetadata.table_name == table_name)
-            .first()
+            .update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
         )
-        metadata.update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
+
         self.db.commit_session()
         return anno_ids
 
@@ -460,12 +460,11 @@ class DynamicAnnotationClient:
             old_anno.valid = False
             update_map = {anno_id: new_data.id}
 
-        metadata = (
+        (
             self.db.cached_session.query(AnnoMetadata)
             .filter(AnnoMetadata.table_name == table_name)
-            .first()
+            .update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
         )
-        metadata.update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
         self.db.commit_session()
 
         return update_map
@@ -506,12 +505,11 @@ class DynamicAnnotationClient:
                     annotation.valid = False
                 deleted_ids.append(annotation.id)
 
-            metadata = (
+            (
                 self.db.cached_session.query(AnnoMetadata)
                 .filter(AnnoMetadata.table_name == table_name)
-                .first()
+                .update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
             )
-            metadata.update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
 
             self.db.commit_session()
 
