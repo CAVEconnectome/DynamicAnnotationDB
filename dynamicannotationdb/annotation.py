@@ -163,33 +163,36 @@ class DynamicAnnotationClient:
         read_permission: str = None,
         write_permission: str = None,
     ):
-        r"""Create new annotation table unless already exists
+        r"""Update metadata for an annotation table.
 
         Parameters
         ----------
         table_name : str
-            name of table
-        schema_type : str
-            Type of schema to use, must be a valid type from EMAnnotationSchemas
-
-        description: str
+            Name of the annotation table
+        description: str, optional
             a string with a human-readable explanation of
             what is in the table. Including whom made it
             and any information that helps interpret the fields
             of the annotations.
-
-        user_id: str
+        user_id : str, optional
             user id for this table
-
-
-        table_metadata: dict
-
-        flat_segmentation_source: str
+        flat_segmentation_source : str, optional
             a path to a segmentation source associated with this table
-             i.e. 'precomputed:\\gs:\\my_synapse_seg\example1'
+            i.e. 'precomputed:\\gs:\\my_synapse_seg\example1', by default None
+        read_permission : str, optional
+            set read permissions, by default None
+        write_permission : str, optional
+            set write permissions, by default None
 
-        with_crud_columns: bool
-            add additional columns to track CRUD operations on rows
+        Returns
+        -------
+        dict
+            The updated metadata for the target table
+
+        Raises
+        ------
+        TableNameNotFound
+            If no table with 'table_name' found in the metadata table
         """
         metadata = (
             self.db.cached_session.query(AnnoMetadata)
@@ -208,13 +211,13 @@ class DynamicAnnotationClient:
             "read_permission": read_permission,
             "write_permission": write_permission,
         }
-        update_dict = {
-            AnnoMetadata.__dict__[k]: v for k, v in update_dict.items() if v is not None
-        }
-        metadata.update(**update_dict)
+        update_dict = {k: v for k, v in update_dict.items() if v is not None}
+        for column, value in update_dict.items():
+            if hasattr(metadata, str(column)):
+                setattr(metadata, column, value)
         self.db.commit_session()
         logging.info(f"Table: {table_name} metadata updated ")
-        return self.db.get_table_metadata()
+        return self.db.get_table_metadata(table_name)
 
     def create_reference_update_trigger(self, table_name, reference_table, model):
         func_name = f"{table_name}_update_reference_id"
