@@ -12,7 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     Enum,
-    JSON
+    JSON,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -113,6 +113,14 @@ class AnnoMetadata(Base):
     voxel_resolution_x = Column(Float, nullable=False)
     voxel_resolution_y = Column(Float, nullable=False)
     voxel_resolution_z = Column(Float, nullable=False)
+    write_permission = Column(
+        postgresql.ENUM("PRIVATE", "GROUP", "PUBLIC", name="read_permission"),
+        nullable=True,
+    )
+    read_permission = Column(
+        postgresql.ENUM("PRIVATE", "GROUP", "PUBLIC", name="read_permission"),
+        nullable=True,
+    )
 
 
 class SegmentationMetadata(Base):
