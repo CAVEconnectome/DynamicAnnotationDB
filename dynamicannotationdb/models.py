@@ -115,12 +115,13 @@ class AnnoMetadata(Base):
     voxel_resolution_z = Column(Float, nullable=False)
     write_permission = Column(
         postgresql.ENUM("PRIVATE", "GROUP", "PUBLIC", name="read_permission"),
-        nullable=True,
+        nullable=False,
     )
     read_permission = Column(
         postgresql.ENUM("PRIVATE", "GROUP", "PUBLIC", name="read_permission"),
-        nullable=True,
+        nullable=False,
     )
+    last_modified = Column(DateTime, nullable=False)
 
 
 class SegmentationMetadata(Base):

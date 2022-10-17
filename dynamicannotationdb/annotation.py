@@ -10,6 +10,7 @@ from .errors import (
     AnnotationInsertLimitExceeded,
     NoAnnotationsFoundWithID,
     UpdateAnnotationError,
+    TableNameNotFound,
 )
 from .models import AnnoMetadata
 from .schema import DynamicSchemaClient
@@ -41,17 +42,19 @@ class DynamicAnnotationClient:
         return self._table
 
     def create_table(
-            self,
-            table_name: str,
-            schema_type: str,
-            description: str,
-            user_id: str,
-            voxel_resolution_x: float,
-            voxel_resolution_y: float,
-            voxel_resolution_z: float,
-            table_metadata: dict = None,
-            flat_segmentation_source: str = None,
-            with_crud_columns: bool = True,
+        self,
+        table_name: str,
+        schema_type: str,
+        description: str,
+        user_id: str,
+        voxel_resolution_x: float,
+        voxel_resolution_y: float,
+        voxel_resolution_z: float,
+        table_metadata: dict = None,
+        flat_segmentation_source: str = None,
+        with_crud_columns: bool = True,
+        read_permission: str = "PUBLIC",
+        write_permission: str = "PRIVATE",
     ):
         r"""Create new annotation table unless already exists
 
@@ -137,6 +140,9 @@ class DynamicAnnotationClient:
             "voxel_resolution_x": voxel_resolution_x,
             "voxel_resolution_y": voxel_resolution_y,
             "voxel_resolution_z": voxel_resolution_z,
+            "read_permission": read_permission,
+            "write_permission": write_permission,
+            "last_modified": creation_time,
         }
 
         logging.info(f"Metadata for table: {table_name} is {metadata_dict}")
@@ -146,6 +152,67 @@ class DynamicAnnotationClient:
         logging.info(
             f"Table: {table_name} created using {AnnotationModel} model at {creation_time}"
         )
+        return table_name
+
+    def update_table_metadata(
+        self,
+        table_name: str,
+        description: str = None,
+        user_id: str = None,
+        flat_segmentation_source: str = None,
+        read_permission: str = None,
+        write_permission: str = None,
+    ):
+        r"""Create new annotation table unless already exists
+
+        Parameters
+        ----------
+        table_name : str
+            name of table
+        schema_type : str
+            Type of schema to use, must be a valid type from EMAnnotationSchemas
+
+        description: str
+            a string with a human-readable explanation of
+            what is in the table. Including whom made it
+            and any information that helps interpret the fields
+            of the annotations.
+
+        user_id: str
+            user id for this table
+
+
+        table_metadata: dict
+
+        flat_segmentation_source: str
+            a path to a segmentation source associated with this table
+             i.e. 'precomputed:\\gs:\\my_synapse_seg\example1'
+
+        with_crud_columns: bool
+            add additional columns to track CRUD operations on rows
+        """
+        metadata = (
+            self.db.cached_session.query(AnnoMetadata)
+            .filter(AnnoMetadata.table_name == table_name)
+            .first()
+        )
+        if metadata is None:
+            raise TableNameNotFound(
+                f"no table named {table_name} in database {self.sql_url} "
+            )
+
+        update_dict = {
+            "description": description,
+            "user_id": user_id,
+            "flat_segmentation_source": flat_segmentation_source,
+            **table_metadata,
+        }
+        update_dict = {
+            AnnoMetadata.__dict__[k]: v for k, v in update_dict.items() if v is not None
+        }
+        metadata.update(**update_dict)
+        self.db.commit_session()
+        logging.info(f"Table: {table_name} metadata updated ")
         return table_name
 
     def create_reference_update_trigger(self, table_name, reference_table, model):
@@ -208,9 +275,13 @@ class DynamicAnnotationClient:
         """
         metadata = (
             self.db.cached_session.query(AnnoMetadata)
-                .filter(AnnoMetadata.table_name == table_name)
-                .first()
+            .filter(AnnoMetadata.table_name == table_name)
+            .first()
         )
+        if metadata is None:
+            raise TableNameNotFound(
+                f"no table named {table_name} in database {self.sql_url} "
+            )
         metadata.deleted = datetime.datetime.utcnow()
         self.db.commit_session()
         return True
@@ -289,8 +360,8 @@ class DynamicAnnotationClient:
 
         annotations = (
             self.db.cached_session.query(AnnotationModel)
-                .filter(AnnotationModel.id.in_(list(annotation_ids)))
-                .all()
+            .filter(AnnotationModel.id.in_(list(annotation_ids)))
+            .all()
         )
 
         metadata = self.db.get_table_metadata(table_name)
@@ -357,8 +428,8 @@ class DynamicAnnotationClient:
         try:
             old_anno = (
                 self.db.cached_session.query(AnnotationModel)
-                    .filter(AnnotationModel.id == anno_id)
-                    .one()
+                .filter(AnnotationModel.id == anno_id)
+                .one()
             )
         except NoAnnotationsFoundWithID as e:
             raise f"No result found for {anno_id}. Error: {e}" from e
@@ -385,7 +456,7 @@ class DynamicAnnotationClient:
         return update_map
 
     def delete_annotation(
-            self, table_name: str, annotation_ids: List[int]
+        self, table_name: str, annotation_ids: List[int]
     ) -> List[int]:
         """Delete annotations by ids
 
@@ -405,8 +476,8 @@ class DynamicAnnotationClient:
 
         annotations = (
             self.db.cached_session.query(AnnotationModel)
-                .filter(AnnotationModel.id.in_(annotation_ids))
-                .all()
+            .filter(AnnotationModel.id.in_(annotation_ids))
+            .all()
         )
         deleted_ids = []
         if annotations:
