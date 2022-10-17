@@ -58,7 +58,7 @@ class AnalysisVersion(Base):
         postgresql.ENUM(
             "AVAILABLE", "RUNNING", "FAILED", "EXPIRED", name="version_status"
         ),
-        nullable=True,
+        nullable=False,
     )
     is_merged = Column(Boolean, default=True)
 
