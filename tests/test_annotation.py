@@ -190,3 +190,12 @@ def test_delete_annotation(dadb_interface, annotation_metadata):
     is_deleted = dadb_interface.annotation.delete_annotation(table_name, ids_to_delete)
 
     assert is_deleted == ids_to_delete
+
+
+def test_update_table_metadata(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+    updated_metadata = dadb_interface.annotation.update_table_metadata(
+        table_name, description="New description"
+    )
+
+    assert updated_metadata["description"] == "New description"
