@@ -12,7 +12,7 @@ def test_get_table_metadata(dadb_interface, annotation_metadata):
     assert metadata["schema_type"] == schema_type
     assert metadata["table_name"] == "anno_test"
     assert metadata["user_id"] == "foo@bar.com"
-    assert metadata["description"] == "some description"
+    assert metadata["description"] == "New description"
     assert metadata["voxel_resolution_x"] == 4.0
 
     # test for missing column

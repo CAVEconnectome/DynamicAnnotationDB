@@ -12,7 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     Enum,
-    JSON
+    JSON,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -58,7 +58,7 @@ class AnalysisVersion(Base):
         postgresql.ENUM(
             "AVAILABLE", "RUNNING", "FAILED", "EXPIRED", name="version_status"
         ),
-        nullable=True,
+        nullable=False,
     )
     is_merged = Column(Boolean, default=True)
 
@@ -113,6 +113,15 @@ class AnnoMetadata(Base):
     voxel_resolution_x = Column(Float, nullable=False)
     voxel_resolution_y = Column(Float, nullable=False)
     voxel_resolution_z = Column(Float, nullable=False)
+    write_permission = Column(
+        postgresql.ENUM("PRIVATE", "GROUP", "PUBLIC", name="read_permission"),
+        nullable=False,
+    )
+    read_permission = Column(
+        postgresql.ENUM("PRIVATE", "GROUP", "PUBLIC", name="read_permission"),
+        nullable=False,
+    )
+    last_modified = Column(DateTime, nullable=False)
 
 
 class SegmentationMetadata(Base):
