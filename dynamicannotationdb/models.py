@@ -108,7 +108,7 @@ class AnnoMetadata(Base):
     deleted = Column(DateTime, nullable=True)
     user_id = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
-    warning_text = Column(Text, nullable=True)
+    notice_text = Column(Text, nullable=True)
     reference_table = Column(String(100), nullable=True)
     flat_segmentation_source = Column(String(300), nullable=True)
     voxel_resolution_x = Column(Float, nullable=False)
