@@ -218,6 +218,8 @@ class DynamicAnnotationClient:
         if warning_text is not None:
             if (len(warning_text)==0):
                 update_dict['warning_text']=None
+            else:
+                update_dict['warning_text']=warning_text
         for column, value in update_dict.items():
             if hasattr(metadata, str(column)):
                 setattr(metadata, column, value)
