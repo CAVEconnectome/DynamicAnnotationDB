@@ -162,6 +162,7 @@ class DynamicAnnotationClient:
         flat_segmentation_source: str = None,
         read_permission: str = None,
         write_permission: str = None,
+        notice_text: str = None,
     ):
         r"""Update metadata for an annotation table.
 
@@ -183,6 +184,8 @@ class DynamicAnnotationClient:
             set read permissions, by default None
         write_permission : str, optional
             set write permissions, by default None
+        notice_text : str, optional
+            set notice_text, by default None, if empty string will delete
 
         Returns
         -------
@@ -212,6 +215,11 @@ class DynamicAnnotationClient:
             "write_permission": write_permission,
         }
         update_dict = {k: v for k, v in update_dict.items() if v is not None}
+        if notice_text is not None:
+            if (len(notice_text)==0):
+                update_dict['notice_text']=None
+            else:
+                update_dict['notice_text']=notice_text
         for column, value in update_dict.items():
             if hasattr(metadata, str(column)):
                 setattr(metadata, column, value)
