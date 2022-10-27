@@ -1,13 +1,14 @@
 import logging
+from contextlib import contextmanager
 from typing import List
 
-from sqlalchemy import MetaData, create_engine, inspect, func
+from sqlalchemy import create_engine, func, inspect
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 from .errors import TableAlreadyExists, TableNameNotFound
-from .models import AnnoMetadata, SegmentationMetadata, Base
+from .models import AnnoMetadata, Base, SegmentationMetadata
 
 
 class DynamicAnnotationDB:
@@ -49,6 +50,18 @@ class DynamicAnnotationDB:
             self._cached_session = self.session()
         return self._cached_session
 
+    @contextmanager
+    def session_scope(self):
+        try:
+            yield self.cached_session
+        except Exception as e:
+            self.cached_session.rollback()
+            logging.exception(f"SQL Error: {e}")
+            raise e
+        finally:
+            self.cached_session.close()
+        self._cached_session = None
+
     def commit_session(self):
         try:
             self.cached_session.commit()
@@ -66,22 +79,23 @@ class DynamicAnnotationDB:
 
     def get_table_metadata(self, table_name: str, filter_col: str = None):
         data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
-        query = self.cached_session.query(data).filter(
-            AnnoMetadata.table_name == table_name
-        )
-        result = query.one()
-        if hasattr(result, "__dict__"):
-            return self.get_automap_items(result)
-        else:
-            return result[0]
+        with self.session_scope() as session:
+            query = session.query(data).filter(AnnoMetadata.table_name == table_name)
+            result = query.one()
+
+            if hasattr(result, "__dict__"):
+                return self.get_automap_items(result)
+            else:
+                return result[0]
 
     def get_table_schema(self, table_name: str) -> str:
         table_metadata = self.get_table_metadata(table_name)
         return table_metadata["schema_type"]
 
     def get_valid_table_names(self) -> List[str]:
-        metadata = self.cached_session.query(AnnoMetadata).all()
-        return [m.table_name for m in metadata if m.valid == True]
+        with self.session_scope() as session:
+            metadata = session.query(AnnoMetadata).all()
+            return [m.table_name for m in metadata if m.valid == True]
 
     def get_annotation_table_size(self, table_name: str) -> int:
         """Get the number of annotations in a table
@@ -97,15 +111,18 @@ class DynamicAnnotationDB:
             number of annotations
         """
         Model = self.cached_table(table_name)
-        return self.cached_session.query(Model).count()
+        with self.session_scope() as session:
+            return session.query(Model).count()
 
     def get_max_id_value(self, table_name: str) -> int:
         model = self.cached_table(table_name)
-        return self.cached_session.query(func.max(model.id)).scalar()
+        with self.session_scope() as session:
+            return session.query(func.max(model.id)).scalar()
 
     def get_min_id_value(self, table_name: str) -> int:
         model = self.cached_table(table_name)
-        return self.cached_session.query(func.min(model.id)).scalar()
+        with self.session_scope() as session:
+            return session.query(func.min(model.id)).scalar()
 
     def get_table_row_count(
         self, table_name: str, filter_valid: bool = False, filter_timestamp: str = None
@@ -122,12 +139,13 @@ class DynamicAnnotationDB:
             int: number of rows
         """
         model = self.cached_table(table_name)
-        sql_query = self.cached_session.query(func.count(model.id))
-        if filter_valid:
-            sql_query = sql_query.filter(model.valid == True)
-        if filter_timestamp and hasattr(model, "created"):
-            sql_query = sql_query.filter(model.created <= filter_timestamp)
-        return sql_query.scalar()
+        with self.session_scope() as session:
+            sql_query = session.query(func.count(model.id))
+            if filter_valid:
+                sql_query = sql_query.filter(model.valid == True)
+            if filter_timestamp and hasattr(model, "created"):
+                sql_query = sql_query.filter(model.created <= filter_timestamp)
+            return sql_query.scalar()
 
     @staticmethod
     def get_automap_items(result):
@@ -172,11 +190,12 @@ class DynamicAnnotationDB:
         list
             List of table_names
         """
-        stmt = self.cached_session.query(AnnoMetadata)
-        if filter_valid:
-            stmt = stmt.filter(AnnoMetadata.valid == True)
-        metadata = stmt.all()
-        return [m.table_name for m in metadata]
+        with self.session_scope() as session:
+            stmt = session.query(AnnoMetadata)
+            if filter_valid:
+                stmt = stmt.filter(AnnoMetadata.valid == True)
+            metadata = stmt.all()
+            return [m.table_name for m in metadata]
 
     def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:
         self.mapped_base = automap_base()
