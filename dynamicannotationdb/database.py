@@ -1,13 +1,14 @@
 import logging
+from contextlib import contextmanager
 from typing import List
 
-from sqlalchemy import MetaData, create_engine, inspect, func
+from sqlalchemy import create_engine, func, inspect
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
-from contextlib import contextmanager
+
 from .errors import TableAlreadyExists, TableNameNotFound
-from .models import AnnoMetadata, SegmentationMetadata, Base
+from .models import AnnoMetadata, Base, SegmentationMetadata
 
 
 class DynamicAnnotationDB:
