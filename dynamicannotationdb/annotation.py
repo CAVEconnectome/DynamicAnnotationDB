@@ -119,11 +119,11 @@ class DynamicAnnotationClient:
                     table_name, reference_table, AnnotationModel
                 )
                 description += (
-                    f" [Note: This table '{AnnotationModel.__name__}' will update the 'target_id' "
+                    f" [Note: This table '{AnnotationModel.name}' will update the 'target_id' "
                     f"foreign_key when updates are made to the '{reference_table}' table] "
                 )
 
-        self.db.base.metadata.tables[AnnotationModel.__name__].create(
+        self.db.base.metadata.tables[AnnotationModel.name].create(
             bind=self.db.engine
         )
         creation_time = datetime.datetime.utcnow()
