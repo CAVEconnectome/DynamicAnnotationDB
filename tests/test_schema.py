@@ -1,8 +1,7 @@
 import marshmallow
 from emannotationschemas.errors import UnknownAnnotationTypeException
 import pytest
-from sqlalchemy.ext.declarative.api import DeclarativeMeta
-
+from sqlalchemy import Table
 
 def test_get_schema(dadb_interface):
     valid_schema = dadb_interface.schema.get_schema("synapse")
@@ -22,7 +21,7 @@ def test_create_annotation_model(dadb_interface):
     new_model = dadb_interface.schema.create_annotation_model(
         "test_synapse_2", "synapse"
     )
-    assert isinstance(new_model, DeclarativeMeta)
+    assert isinstance(new_model, Table)
 
 
 def test_create_segmentation_model(dadb_interface):
@@ -30,7 +29,7 @@ def test_create_segmentation_model(dadb_interface):
         "test_synapse_2", "synapse", "test_annodb"
     )
 
-    assert isinstance(valid_schema, DeclarativeMeta)
+    assert isinstance(valid_schema, Table)
 
 
 def test_create_reference_annotation_model(dadb_interface):
@@ -38,7 +37,7 @@ def test_create_reference_annotation_model(dadb_interface):
         "test_ref_table_2", "presynaptic_bouton_type", "test_synapse_2"
     )
 
-    assert isinstance(valid_ref_schema, DeclarativeMeta)
+    assert isinstance(valid_ref_schema, Table)
 
 
 def test_get_split_model(dadb_interface):
@@ -46,8 +45,8 @@ def test_get_split_model(dadb_interface):
         "test_synapse_2", "synapse", "test_annodb"
     )
 
-    assert isinstance(anno_model, DeclarativeMeta)
-    assert isinstance(seg_model, DeclarativeMeta)
+    assert isinstance(anno_model, Table)
+    assert isinstance(seg_model, Table)
 
 
 def test_get_split_model_with_no_seg_columns(dadb_interface):
@@ -59,7 +58,7 @@ def test_get_split_model_with_no_seg_columns(dadb_interface):
         table_metadata=table_metadata,
     )
 
-    assert isinstance(anno_model, DeclarativeMeta)
+    assert isinstance(anno_model, Table)
     assert seg_model == None
 
 
@@ -70,7 +69,7 @@ def test_create_flat_model(dadb_interface):
         "test_annodb",
     )
 
-    assert isinstance(valid_ref_schema, DeclarativeMeta)
+    assert isinstance(valid_ref_schema, Table)
 
 
 def test_flattened_schema_data(dadb_interface):
