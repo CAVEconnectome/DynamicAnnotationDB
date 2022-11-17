@@ -155,7 +155,7 @@ def test_get_reference_annotation(dadb_interface, annotation_metadata):
     logging.info(test_data)
 
     assert test_data[0]["id"] == 1
-    assert test_data[0]["target_id"] == 3
+    assert test_data[0]["target_id"] == 1
 
 
 def test_update_reference_annotation(dadb_interface, annotation_metadata):
