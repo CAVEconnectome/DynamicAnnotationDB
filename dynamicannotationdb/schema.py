@@ -41,7 +41,6 @@ class DynamicSchemaClient:
         schema_type: str,
         segmentation_source: str,
         table_metadata: dict = None,
-        with_crud_columns: bool = False,
         reset_cache: bool = False
 
     ):
@@ -50,7 +49,6 @@ class DynamicSchemaClient:
             schema_type=schema_type,
             segmentation_source=segmentation_source,
             table_metadata=table_metadata,
-            with_crud_columns=with_crud_columns,
             reset_cache=reset_cache
         )
 
