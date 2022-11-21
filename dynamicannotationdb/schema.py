@@ -32,7 +32,7 @@ class DynamicSchemaClient:
             schema_type=schema_type,
             table_metadata=table_metadata,
             with_crud_columns=with_crud_columns,
-            reset_cache=reset_cache
+            reset_cache=reset_cache,
         )
 
     @staticmethod
@@ -41,15 +41,14 @@ class DynamicSchemaClient:
         schema_type: str,
         segmentation_source: str,
         table_metadata: dict = None,
-        reset_cache: bool = False
-
+        reset_cache: bool = False,
     ):
         return em_models.make_model_from_schema(
             table_name=table_name,
             schema_type=schema_type,
             segmentation_source=segmentation_source,
             table_metadata=table_metadata,
-            reset_cache=reset_cache
+            reset_cache=reset_cache,
         )
 
     @staticmethod
@@ -59,7 +58,7 @@ class DynamicSchemaClient:
         target_table: str,
         segmentation_source: str = None,
         with_crud_columns: bool = True,
-        reset_cache: bool = False
+        reset_cache: bool = False,
     ):
         return em_models.make_model_from_schema(
             table_name=table_name,
@@ -67,20 +66,23 @@ class DynamicSchemaClient:
             segmentation_source=segmentation_source,
             table_metadata={"reference_table": target_table},
             with_crud_columns=with_crud_columns,
-            reset_cache=reset_cache
+            reset_cache=reset_cache,
         )
 
     @staticmethod
     def create_flat_model(
         table_name: str,
         schema_type: str,
-        segmentation_source: str,
-        table_metadata: str = None,
-        reset_cache: bool = False
-
+        table_metadata: dict = None,
+        with_crud_columns: bool = False,
+        reset_cache: bool = False,
     ):
         return em_models.make_flat_model(
-            table_name, schema_type, segmentation_source, table_metadata
+            table_name=table_name,
+            schema_type=schema_type,
+            table_metadata=table_metadata,
+            with_crud_columns=with_crud_columns,
+            reset_cache=reset_cache
         )
 
     @staticmethod
@@ -91,8 +93,7 @@ class DynamicSchemaClient:
         include_contacts: bool = False,
         metadata_dict: dict = None,
         with_crud_columns: bool = True,
-        reset_cache: bool = False
-
+        reset_cache: bool = False,
     ):
 
         return em_models.make_dataset_models(
@@ -112,7 +113,7 @@ class DynamicSchemaClient:
         table_metadata: dict = None,
         anno_crud_columns: bool = True,
         seg_crud_columns: bool = False,
-        reset_cache: bool = False
+        reset_cache: bool = False,
     ):
         """Return the annotation and segmentation models from a
         supplied schema. If the schema type requires no segmentation fields
@@ -142,7 +143,7 @@ class DynamicSchemaClient:
             segmentation_source=None,
             table_metadata=table_metadata,
             with_crud_columns=anno_crud_columns,
-            reset_cache=reset_cache
+            reset_cache=reset_cache,
         )
         if DynamicSchemaClient.is_segmentation_table_required(schema_type):
             seg_model = em_models.make_model_from_schema(
@@ -151,7 +152,7 @@ class DynamicSchemaClient:
                 segmentation_source=segmentation_source,
                 table_metadata=table_metadata,
                 with_crud_columns=seg_crud_columns,
-                reset_cache=reset_cache
+                reset_cache=reset_cache,
             )
             return anno_model, seg_model
         return anno_model, None
