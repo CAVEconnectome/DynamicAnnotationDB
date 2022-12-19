@@ -509,7 +509,9 @@ class DynamicAnnotationClient:
             deleted_time = datetime.datetime.utcnow()
 
             for annotation in annotations:
-                if hasattr(AnnotationModel, "target_id"):
+                #TODO: This should be deprecated, as all tables should have 
+                # CRUD columns now, but leaving this for backward safety.
+                if not hasattr(AnnotationModel, "deleted"):
                     self.db.cached_session.delete(annotation)
                 else:
                     annotation.deleted = deleted_time
