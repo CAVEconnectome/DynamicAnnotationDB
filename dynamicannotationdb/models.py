@@ -18,8 +18,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects import postgresql
 
-# Models that will be created in the 'materialized' database.
-MatBase = declarative_base()
 # Models that will be created in the 'annotation' database.
 AnnotationBase = declarative_base()
 
@@ -85,17 +83,6 @@ class VersionErrorTable(Base):
     error = Column(JSON, nullable=True)
     analysisversion_id = Column(Integer, ForeignKey("analysisversion.id"))
     analysisversion = relationship("AnalysisVersion")
-
-
-class MaterializedMetadata(MatBase):
-    __tablename__ = "materializedmetadata"
-    id = Column(Integer, primary_key=True)
-    schema = Column(String(100), nullable=False)
-    table_name = Column(String(100), nullable=False)
-    row_count = Column(Integer, nullable=False)
-    materialized_timestamp = Column(DateTime, nullable=False)
-    segmentation_source = Column(String(255), nullable=True)
-    is_merged = Column(Boolean, nullable=True)
 
 
 class AnnoMetadata(Base):
