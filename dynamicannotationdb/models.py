@@ -110,6 +110,7 @@ class AnnoMetadata(Base):
         nullable=False,
     )
     last_modified = Column(DateTime, nullable=False)
+    keep_created_ts_col = Column(Boolean, nullable=False)
 
 
 class SegmentationMetadata(Base):
