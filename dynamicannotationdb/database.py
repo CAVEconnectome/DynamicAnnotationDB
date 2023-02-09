@@ -2,13 +2,15 @@ import logging
 from contextlib import contextmanager
 from typing import List
 
-from sqlalchemy import create_engine, func, inspect
+from sqlalchemy import create_engine, func, inspect, or_
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
+from sqlalchemy.orm.exc import NoResultFound
 
 from .errors import TableAlreadyExists, TableNameNotFound
 from .models import AnnoMetadata, Base, SegmentationMetadata
+from .schema import DynamicSchemaClient
 
 
 class DynamicAnnotationDB:
@@ -25,12 +27,12 @@ class DynamicAnnotationDB:
             tables=[AnnoMetadata.__table__, SegmentationMetadata.__table__],
             checkfirst=True,
         )
-        self.mapped_base = automap_base()
-        self.mapped_base.prepare(self.engine, reflect=True)
 
         self.session = scoped_session(
             sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
         )
+        self.schema_client = DynamicSchemaClient()
+
         self._inspector = inspect(self.engine)
 
         self._cached_session = None
@@ -80,17 +82,30 @@ class DynamicAnnotationDB:
     def get_table_metadata(self, table_name: str, filter_col: str = None):
         data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
         with self.session_scope() as session:
-            query = session.query(data).filter(AnnoMetadata.table_name == table_name)
-            result = query.one()
-
-            if hasattr(result, "__dict__"):
-                return self.get_automap_items(result)
-            else:
-                return result[0]
+            metadata = (
+                session.query(data, SegmentationMetadata)
+                .outerjoin(
+                    SegmentationMetadata,
+                    AnnoMetadata.table_name == SegmentationMetadata.annotation_table,
+                )
+                .filter(
+                    or_(
+                        AnnoMetadata.table_name == table_name,
+                        SegmentationMetadata.table_name == table_name,
+                    )
+                )
+                .all()
+            )
+            try:
+                if metadata:
+                    flatted_metadata = self.flatten_join(metadata)
+                    return flatted_metadata[0]
+            except NoResultFound:
+                return None
 
     def get_table_schema(self, table_name: str) -> str:
         table_metadata = self.get_table_metadata(table_name)
-        return table_metadata["schema_type"]
+        return table_metadata.get("schema_type")
 
     def get_valid_table_names(self) -> List[str]:
         with self.session_scope() as session:
@@ -151,6 +166,17 @@ class DynamicAnnotationDB:
     def get_automap_items(result):
         return {k: v for (k, v) in result.__dict__.items() if k != "_sa_instance_state"}
 
+    def obj_to_dict(self, obj):
+        if obj:
+            return {
+                column.key: getattr(obj, column.key) for column in inspect(obj).mapper.column_attrs
+            }
+        else:
+            return {}
+
+    def flatten_join(self, _list: List):
+        return [{**self.obj_to_dict(a), **self.obj_to_dict(b)} for a, b in _list]
+
     def drop_table(self, table_name: str) -> bool:
         """Drop a table, actually removes it from the database
         along with segmentation tables associated with it
@@ -198,9 +224,27 @@ class DynamicAnnotationDB:
             return [m.table_name for m in metadata]
 
     def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:
-        self.mapped_base = automap_base()
-        self.mapped_base.prepare(self._engine, reflect=True)
-        return self.mapped_base.classes[table_name]
+        metadata = self.get_table_metadata(table_name)
+
+        if metadata:
+            if metadata["reference_table"]:
+                return self.schema_client.create_reference_annotation_model(
+                    table_name,
+                    metadata["schema_type"],
+                    metadata["reference_table"],
+                )
+            elif metadata["table_name"] != metadata.get("annotation_table"):
+                return self.schema_client.create_segmentation_model(
+                    table_name, metadata["schema_type"], metadata["pcg_table_name"]
+                )
+
+            else:
+                return self.schema_client.create_annotation_model(
+                    table_name, metadata["schema_type"]
+                )
+
+        else:
+            raise KeyError
 
     def _get_model_columns(self, table_name: str) -> List[tuple]:
         """Return list of column names and types of a given table
