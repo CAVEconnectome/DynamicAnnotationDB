@@ -169,7 +169,8 @@ class DynamicAnnotationDB:
     def obj_to_dict(self, obj):
         if obj:
             return {
-                column.key: getattr(obj, column.key) for column in inspect(obj).mapper.column_attrs
+                column.key: getattr(obj, column.key)
+                for column in inspect(obj).mapper.column_attrs
             }
         else:
             return {}
@@ -233,9 +234,13 @@ class DynamicAnnotationDB:
                     metadata["schema_type"],
                     metadata["reference_table"],
                 )
-            elif metadata["table_name"] != metadata.get("annotation_table"):
+            elif metadata.get("annotation_table") and table_name != metadata.get(
+                "annotation_table"
+            ):
                 return self.schema_client.create_segmentation_model(
-                    table_name, metadata["schema_type"], metadata["pcg_table_name"]
+                    metadata["annotation_table"],
+                    metadata["schema_type"],
+                    metadata["pcg_table_name"],
                 )
 
             else:
