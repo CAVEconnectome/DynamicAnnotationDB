@@ -1,7 +1,5 @@
 import logging
 
-from sqlalchemy.ext.declarative.api import DeclarativeMeta
-
 
 def test_create_segmentation_table(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]
