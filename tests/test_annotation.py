@@ -22,6 +22,27 @@ def test_create_table(dadb_interface, annotation_metadata):
     assert table_name == table
 
 
+def test_load_test_create_many_tables(dadb_interface, annotation_metadata):
+    table_name = annotation_metadata["table_name"]
+    schema_type = annotation_metadata["schema_type"]
+    vx = annotation_metadata["voxel_resolution_x"]
+    vy = annotation_metadata["voxel_resolution_y"]
+    vz = annotation_metadata["voxel_resolution_z"]
+    for i in range(50):
+        table = dadb_interface.annotation.create_table(
+            f"{table_name}_{i}",
+            schema_type,
+            description="some description",
+            user_id="foo@bar.com",
+            voxel_resolution_x=vx,
+            voxel_resolution_y=vy,
+            voxel_resolution_z=vz,
+            table_metadata=None,
+            flat_segmentation_source=None,
+        )
+        assert f"{table_name}_{i}" == table
+
+
 def test_create_reference_table(dadb_interface, annotation_metadata):
     table_name = "presynaptic_bouton_types"
     schema_type = "presynaptic_bouton_type"
@@ -89,7 +110,6 @@ def test_insert_annotation(dadb_interface, annotation_metadata):
         }
     ]
     inserted_id = dadb_interface.annotation.insert_annotations(table_name, test_data)
-
     assert inserted_id == [1]
 
 
