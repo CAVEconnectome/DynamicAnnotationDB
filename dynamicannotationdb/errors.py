@@ -14,7 +14,7 @@ class TableAlreadyExists(KeyError):
     """Table name already exists in the Metadata table"""
 
 class TableNotInMetadata(KeyError):
-    """Table name already exists in the Metadata table"""
+    """Table does not exist in the Metadata table"""
 
 class IdsAlreadyExists(KeyError):
     """Annotation IDs already exists in the segmentation table"""
