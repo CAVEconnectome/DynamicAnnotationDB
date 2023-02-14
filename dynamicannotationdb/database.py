@@ -82,26 +82,39 @@ class DynamicAnnotationDB:
     def get_table_metadata(self, table_name: str, filter_col: str = None):
         data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
         with self.session_scope() as session:
-            metadata = (
-                session.query(data, SegmentationMetadata)
-                .outerjoin(
-                    SegmentationMetadata,
-                    AnnoMetadata.table_name == SegmentationMetadata.annotation_table,
+            if filter_col and data:
+
+                query = session.query(data).filter(
+                    AnnoMetadata.table_name == table_name
                 )
-                .filter(
-                    or_(
-                        AnnoMetadata.table_name == table_name,
-                        SegmentationMetadata.table_name == table_name,
+                result = query.one()
+
+                if hasattr(result, "__dict__"):
+                    return self.get_automap_items(result)
+                else:
+                    return result[0]
+            else:
+                metadata = (
+                    session.query(data, SegmentationMetadata)
+                    .outerjoin(
+                        SegmentationMetadata,
+                        AnnoMetadata.table_name
+                        == SegmentationMetadata.annotation_table,
                     )
+                    .filter(
+                        or_(
+                            AnnoMetadata.table_name == table_name,
+                            SegmentationMetadata.table_name == table_name,
+                        )
+                    )
+                    .all()
                 )
-                .all()
-            )
-            try:
-                if metadata:
-                    flatted_metadata = self.flatten_join(metadata)
-                    return flatted_metadata[0]
-            except NoResultFound:
-                return None
+                try:
+                    if metadata:
+                        flatted_metadata = self.flatten_join(metadata)
+                        return flatted_metadata[0]
+                except NoResultFound:
+                    return None
 
     def get_table_schema(self, table_name: str) -> str:
         table_metadata = self.get_table_metadata(table_name)
