@@ -325,9 +325,13 @@ class DynamicAnnotationDB:
             # cant find the table so lets try the slow reflection before giving up
             self.mapped_base = automap_base()
             self.mapped_base.prepare(self._engine, reflect=True)
-            model = self.mapped_base.classes[table_name]
-            if model:
+            try:
+                model = self.mapped_base.classes[table_name]
                 self._cached_tables[table_name] = model
+            except KeyError as table_error:
+                logging.error(f"Could not load table: {table_error}")
+                return False
+
         except Exception as table_error:
             logging.error(f"Could not load table: {table_error}")
             return False
