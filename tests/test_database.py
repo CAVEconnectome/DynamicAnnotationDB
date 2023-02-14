@@ -1,7 +1,11 @@
 import logging
-from sqlalchemy import Table
-import pytest
 import datetime
+import pytest
+
+from sqlalchemy import Table
+from sqlalchemy.ext.declarative.api import DeclarativeMeta
+
+from emannotationschemas import type_mapping
 
 
 def test_get_table_metadata(dadb_interface, annotation_metadata):
@@ -38,6 +42,15 @@ def test_get_table_sql_metadata(dadb_interface, annotation_metadata):
     sql_metadata = dadb_interface.database.get_table_sql_metadata(table_name)
     logging.info(sql_metadata)
     assert isinstance(sql_metadata, Table)
+
+
+def test__get_model_from_table_name(dadb_interface):
+
+    model_names = [f"test_{schema_name}" for schema_name in type_mapping]
+    for model_name in model_names:
+        model_instance = dadb_interface.database._get_model_from_table_name(model_name)
+
+        assert isinstance(model_instance, DeclarativeMeta)
 
 
 def test_get_model_columns(dadb_interface, annotation_metadata):

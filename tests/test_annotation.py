@@ -1,6 +1,9 @@
 import logging
 import pytest
 
+from emannotationschemas import type_mapping
+from emannotationschemas.schemas.base import ReferenceAnnotation
+
 
 def test_create_table(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]
@@ -22,25 +25,33 @@ def test_create_table(dadb_interface, annotation_metadata):
     assert table_name == table
 
 
-def test_load_test_create_many_tables(dadb_interface, annotation_metadata):
-    table_name = annotation_metadata["table_name"]
-    schema_type = annotation_metadata["schema_type"]
+def test_create_all_schema_types(dadb_interface, annotation_metadata):
+
     vx = annotation_metadata["voxel_resolution_x"]
     vy = annotation_metadata["voxel_resolution_y"]
     vz = annotation_metadata["voxel_resolution_z"]
-    for i in range(50):
+
+    ref_metadata = {
+        "reference_table": "anno_test",
+        "track_target_id_updates": True,
+    }
+
+    for schema_name, schema_type in type_mapping.items():
+        table_metadata = (
+            ref_metadata if issubclass(schema_type, ReferenceAnnotation) else None
+        )
         table = dadb_interface.annotation.create_table(
-            f"{table_name}_{i}",
-            schema_type,
+            f"test_{schema_name}",
+            schema_name,
             description="some description",
             user_id="foo@bar.com",
             voxel_resolution_x=vx,
             voxel_resolution_y=vy,
             voxel_resolution_z=vz,
-            table_metadata=None,
+            table_metadata=table_metadata,
             flat_segmentation_source=None,
         )
-        assert f"{table_name}_{i}" == table
+        assert f"test_{schema_name}" == table
 
 
 def test_create_reference_table(dadb_interface, annotation_metadata):
