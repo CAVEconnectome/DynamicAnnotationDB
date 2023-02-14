@@ -8,7 +8,7 @@ from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
 
-from .errors import TableAlreadyExists, TableNameNotFound
+from .errors import TableAlreadyExists, TableNameNotFound, TableNotInMetadata
 from .models import AnnoMetadata, Base, SegmentationMetadata
 from .schema import DynamicSchemaClient
 
@@ -262,7 +262,7 @@ class DynamicAnnotationDB:
                 )
 
         else:
-            raise KeyError
+            raise TableNotInMetadata
 
     def _get_model_columns(self, table_name: str) -> List[tuple]:
         """Return list of column names and types of a given table
@@ -321,8 +321,19 @@ class DynamicAnnotationDB:
                 table_name
             )
             return True
-        except KeyError as key_error:
-            logging.error(f"Could not load table: {key_error}")
+        except TableNotInMetadata:
+            # cant find the table so lets try the slow reflection before giving up
+            self.mapped_base = automap_base()
+            self.mapped_base.prepare(self._engine, reflect=True)
+            try:
+                model = self.mapped_base.classes[table_name]
+                self._cached_tables[table_name] = model
+            except KeyError as table_error:
+                logging.error(f"Could not load table: {table_error}")
+                return False
+
+        except Exception as table_error:
+            logging.error(f"Could not load table: {table_error}")
             return False
 
     def _is_cached(self, table_name: str) -> bool:
