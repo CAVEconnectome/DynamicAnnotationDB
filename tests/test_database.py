@@ -15,6 +15,13 @@ def test_get_table_metadata(dadb_interface, annotation_metadata):
     assert metadata["description"] == "New description"
     assert metadata["voxel_resolution_x"] == 4.0
 
+    # test with filter to get a col value
+    metadata_value = dadb_interface.database.get_table_metadata(
+        table_name, filter_col="valid"
+    )
+    logging.info(metadata)
+    assert metadata_value == True
+
     # test for missing column
     with pytest.raises(AttributeError) as e:
         bad_return = dadb_interface.database.get_table_metadata(
