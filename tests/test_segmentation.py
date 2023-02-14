@@ -1,6 +1,7 @@
 import logging
 
-from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from emannotationschemas import type_mapping
+from emannotationschemas.schemas.base import ReferenceAnnotation
 
 
 def test_create_segmentation_table(dadb_interface, annotation_metadata):
@@ -11,6 +12,27 @@ def test_create_segmentation_table(dadb_interface, annotation_metadata):
         table_name, "synapse", pcg_table_name
     )
     assert table_added_status == f"{table_name}__{pcg_table_name}"
+
+
+def test_create_all_schema_types(dadb_interface, annotation_metadata):
+    pcg_table_name = annotation_metadata["pcg_table_name"]
+
+    ref_metadata = {
+        "reference_table": "anno_test",
+        "track_target_id_updates": True,
+    }
+
+    for schema_name, schema_type in type_mapping.items():
+        table_metadata = (
+            ref_metadata if issubclass(schema_type, ReferenceAnnotation) else None
+        )
+        table = dadb_interface.segmentation.create_segmentation_table(
+            f"test_{schema_name}",
+            schema_name,
+            pcg_table_name,
+            table_metadata=table_metadata,
+        )
+        assert f"test_{schema_name}__{pcg_table_name}" == table
 
 
 def test_insert_linked_annotations(dadb_interface, annotation_metadata):
