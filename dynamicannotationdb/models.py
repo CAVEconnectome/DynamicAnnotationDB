@@ -169,3 +169,6 @@ class AnalysisView(Base):
     table_name = Column(String(100), nullable=False)
     description = Column(Text, nullable=False)
     datastack_name = Column(String(100), nullable=False)
+    voxel_resolution_x = Column(Float, nullable=False)
+    voxel_resolution_y = Column(Float, nullable=False)
+    voxel_resolution_z = Column(Float, nullable=False)
