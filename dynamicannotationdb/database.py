@@ -7,9 +7,11 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.schema import MetaData
+from sqlalchemy.sql.schema import Table
 
 from .errors import TableAlreadyExists, TableNameNotFound, TableNotInMetadata
-from .models import AnnoMetadata, Base, SegmentationMetadata
+from .models import AnnoMetadata, Base, SegmentationMetadata, AnalysisView
 from .schema import DynamicSchemaClient
 
 
@@ -78,6 +80,26 @@ class DynamicAnnotationDB:
     def get_table_sql_metadata(self, table_name: str):
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
+
+    def get_views(self, datastack_name: str):
+        with self.session_scope() as session:
+            query = session.query(AnalysisView).filter(
+                AnalysisView.datastack_name == datastack_name
+            )
+            return query.all()
+
+    def get_view_metadata(self, datastack_name: str, view_name: str):
+        with self.session_scope() as session:
+            query = (
+                session.query(AnalysisView)
+                .filter(AnalysisView.view_name == view_name)
+                .filter(AnalysisView.datastack_name == datastack_name)
+            )
+            result = query.one()
+            if hasattr(result, "__dict__"):
+                return self.get_automap_items(result)
+            else:
+                return result[0]
 
     def get_table_metadata(self, table_name: str, filter_col: str = None):
         data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
@@ -281,6 +303,17 @@ class DynamicAnnotationDB:
         if not db_columns:
             raise TableNameNotFound(table_name)
         return [(column["name"], column["type"]) for column in db_columns]
+
+    def get_view_table(self, view_name: str) -> Table:
+        """Return the sqlalchemy table object for a view"""
+        if self._is_cached(view_name):
+            return self._cached_tables[view_name]
+        else:
+            meta = MetaData(self._engine)
+            meta.reflect(views=True, only=[view_name])
+            table = meta.tables[view_name]
+            self._cached_tables[view_name] = table
+            return table
 
     def cached_table(self, table_name: str) -> DeclarativeMeta:
         """Returns cached table 'DeclarativeMeta' callable for querying.
