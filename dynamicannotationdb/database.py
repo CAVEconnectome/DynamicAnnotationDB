@@ -92,7 +92,7 @@ class DynamicAnnotationDB:
         with self.session_scope() as session:
             query = (
                 session.query(AnalysisView)
-                .filter(AnalysisView.view_name == view_name)
+                .filter(AnalysisView.table_name == view_name)
                 .filter(AnalysisView.datastack_name == datastack_name)
             )
             result = query.one()
