@@ -173,3 +173,4 @@ class AnalysisView(Base):
     voxel_resolution_y = Column(Float, nullable=False)
     voxel_resolution_z = Column(Float, nullable=False)
     notice_text = Column(Text, nullable=True)
+    live_compatible = Column(Boolean, nullable=False)
