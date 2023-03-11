@@ -160,3 +160,17 @@ class CombinedTableMetadata(Base):
     created = Column(DateTime, nullable=False)
     deleted = Column(DateTime, nullable=True)
     description = Column(Text, nullable=False)
+
+
+# a model of a table that contains table_views, their descriptions and datastacks
+class AnalysisView(Base):
+    __tablename__ = "analysisviews"
+    id = Column(Integer, primary_key=True)
+    table_name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=False)
+    datastack_name = Column(String(100), nullable=False)
+    voxel_resolution_x = Column(Float, nullable=False)
+    voxel_resolution_y = Column(Float, nullable=False)
+    voxel_resolution_z = Column(Float, nullable=False)
+    notice_text = Column(Text, nullable=True)
+    live_compatible = Column(Boolean, nullable=False)
