@@ -216,10 +216,10 @@ class DynamicAnnotationClient:
         }
         update_dict = {k: v for k, v in update_dict.items() if v is not None}
         if notice_text is not None:
-            if (len(notice_text)==0):
-                update_dict['notice_text']=None
+            if len(notice_text) == 0:
+                update_dict["notice_text"] = None
             else:
-                update_dict['notice_text']=notice_text
+                update_dict["notice_text"] = notice_text
         for column, value in update_dict.items():
             if hasattr(metadata, str(column)):
                 setattr(metadata, column, value)
@@ -326,6 +326,11 @@ class DynamicAnnotationClient:
 
         metadata = self.db.get_table_metadata(table_name)
         schema_type = metadata["schema_type"]
+        
+        # load reference table into metadata if not already present 
+        ref_table = metadata.get("reference_table")
+        if ref_table:
+            reference_table_name = self.db.cached_table(ref_table)
 
         AnnotationModel = self.db.cached_table(table_name)
 
@@ -509,7 +514,7 @@ class DynamicAnnotationClient:
             deleted_time = datetime.datetime.utcnow()
 
             for annotation in annotations:
-                #TODO: This should be deprecated, as all tables should have 
+                # TODO: This should be deprecated, as all tables should have
                 # CRUD columns now, but leaving this for backward safety.
                 if not hasattr(AnnotationModel, "deleted"):
                     self.db.cached_session.delete(annotation)
