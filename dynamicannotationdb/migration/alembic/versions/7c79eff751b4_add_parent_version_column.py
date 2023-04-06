@@ -15,7 +15,7 @@ from sqlalchemy.engine import reflection
 revision = "7c79eff751b4"
 down_revision = "ef5c2d7f96d8"
 branch_labels = None
-depends_on = None
+depends_on = "ef5c2d7f96d8"
 
 
 def _table_has_column(table, column):
@@ -30,14 +30,13 @@ def _table_has_column(table, column):
 
 def upgrade():
     with op.batch_alter_table("analysisversion", schema=None) as batch_op:
-        if not _table_has_column("analysisversion", "parent_version"):
-            op.add_column(
-                "analysisversion",
-                sa.Column("parent_version", sa.Integer(), nullable=True),
-            )
-            op.create_foreign_key(
-                None, "analysisversion", "analysisversion", ["parent_version"], ["id"]
-            )
+        op.add_column(
+            "analysisversion",
+            sa.Column("parent_version", sa.Integer(), nullable=True),
+        )
+        op.create_foreign_key(
+            None, "analysisversion", "analysisversion", ["parent_version"], ["id"]
+        )
 
 
 def downgrade():
