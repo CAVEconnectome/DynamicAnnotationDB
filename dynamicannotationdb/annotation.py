@@ -55,6 +55,7 @@ class DynamicAnnotationClient:
         with_crud_columns: bool = True,
         read_permission: str = "PUBLIC",
         write_permission: str = "PRIVATE",
+        notice_text: str = None,
     ):
         r"""Create new annotation table unless already exists
 
@@ -143,6 +144,7 @@ class DynamicAnnotationClient:
             "read_permission": read_permission,
             "write_permission": write_permission,
             "last_modified": creation_time,
+            "notice_text": notice_text,
         }
 
         logging.info(f"Metadata for table: {table_name} is {metadata_dict}")
