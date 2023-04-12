@@ -16,12 +16,12 @@ from .schema import DynamicSchemaClient
 
 
 class DynamicAnnotationDB:
-    def __init__(self, sql_url: str) -> None:
+    def __init__(self, sql_url: str, pool_size=5, max_overflow=5) -> None:
 
         self._cached_session = None
         self._cached_tables = {}
         self._engine = create_engine(
-            sql_url, pool_recycle=3600, pool_size=20, max_overflow=50
+            sql_url, pool_recycle=3600, pool_size=pool_size, max_overflow=max_overflow
         )
         self.base = Base
         self.base.metadata.bind = self._engine
