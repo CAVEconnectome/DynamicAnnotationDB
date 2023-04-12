@@ -35,11 +35,15 @@ class DynamicAnnotationInterface:
 
     """
 
-    def __init__(self, url: str, aligned_volume: str) -> None:
+    def __init__(
+        self, url: str, aligned_volume: str, pool_size=5, max_overflow=5
+    ) -> None:
         self._annotation = None
         self._database = None
         self._segmentation = None
         self._schema = None
+        self.pool_size = pool_size
+        self.max_overflow = max_overflow
         self._base_url = url.rpartition("/")[0]
         self._aligned_volume = aligned_volume
         self._sql_url = self.create_or_select_database(url, aligned_volume)
@@ -159,7 +163,9 @@ class DynamicAnnotationInterface:
     @property
     def database(self) -> DynamicAnnotationDB:
         if not self._database:
-            self._database = DynamicAnnotationDB(self._sql_url)
+            self._database = DynamicAnnotationDB(
+                self._sql_url, self.pool_size, self.max_overflow
+            )
         return self._database
 
     @property
