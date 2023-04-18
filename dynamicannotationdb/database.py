@@ -2,22 +2,26 @@ import logging
 from contextlib import contextmanager
 from typing import List
 
-from sqlalchemy import create_engine, func, inspect
+from sqlalchemy import create_engine, func, inspect, or_
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
+from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.schema import MetaData
+from sqlalchemy.sql.schema import Table
 
-from .errors import TableAlreadyExists, TableNameNotFound
-from .models import AnnoMetadata, Base, SegmentationMetadata
+from .errors import TableAlreadyExists, TableNameNotFound, TableNotInMetadata
+from .models import AnnoMetadata, Base, SegmentationMetadata, AnalysisView
+from .schema import DynamicSchemaClient
 
 
 class DynamicAnnotationDB:
-    def __init__(self, sql_url: str) -> None:
+    def __init__(self, sql_url: str, pool_size=5, max_overflow=5) -> None:
 
         self._cached_session = None
         self._cached_tables = {}
         self._engine = create_engine(
-            sql_url, pool_recycle=3600, pool_size=20, max_overflow=50
+            sql_url, pool_recycle=3600, pool_size=pool_size, max_overflow=max_overflow
         )
         self.base = Base
         self.base.metadata.bind = self._engine
@@ -25,12 +29,12 @@ class DynamicAnnotationDB:
             tables=[AnnoMetadata.__table__, SegmentationMetadata.__table__],
             checkfirst=True,
         )
-        self.mapped_base = automap_base()
-        self.mapped_base.prepare(self.engine, reflect=True)
 
         self.session = scoped_session(
             sessionmaker(bind=self.engine, autocommit=False, autoflush=False)
         )
+        self.schema_client = DynamicSchemaClient()
+
         self._inspector = inspect(self.engine)
 
         self._cached_session = None
@@ -77,20 +81,66 @@ class DynamicAnnotationDB:
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
 
-    def get_table_metadata(self, table_name: str, filter_col: str = None):
-        data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
+    def get_views(self, datastack_name: str):
         with self.session_scope() as session:
-            query = session.query(data).filter(AnnoMetadata.table_name == table_name)
-            result = query.one()
+            query = session.query(AnalysisView).filter(
+                AnalysisView.datastack_name == datastack_name
+            )
+            return query.all()
 
+    def get_view_metadata(self, datastack_name: str, view_name: str):
+        with self.session_scope() as session:
+            query = (
+                session.query(AnalysisView)
+                .filter(AnalysisView.table_name == view_name)
+                .filter(AnalysisView.datastack_name == datastack_name)
+            )
+            result = query.one()
             if hasattr(result, "__dict__"):
                 return self.get_automap_items(result)
             else:
                 return result[0]
 
+    def get_table_metadata(self, table_name: str, filter_col: str = None):
+        data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
+        with self.session_scope() as session:
+            if filter_col and data:
+
+                query = session.query(data).filter(
+                    AnnoMetadata.table_name == table_name
+                )
+                result = query.one()
+
+                if hasattr(result, "__dict__"):
+                    return self.get_automap_items(result)
+                else:
+                    return result[0]
+            else:
+                metadata = (
+                    session.query(data, SegmentationMetadata)
+                    .outerjoin(
+                        SegmentationMetadata,
+                        AnnoMetadata.table_name
+                        == SegmentationMetadata.annotation_table,
+                    )
+                    .filter(
+                        or_(
+                            AnnoMetadata.table_name == table_name,
+                            SegmentationMetadata.table_name == table_name,
+                        )
+                    )
+                    .all()
+                )
+                try:
+                    if metadata:
+                        flatted_metadata = self.flatten_join(metadata)
+                        return flatted_metadata[0]
+                except NoResultFound:
+                    return None
+
     def get_table_schema(self, table_name: str) -> str:
         table_metadata = self.get_table_metadata(table_name)
-        return table_metadata["schema_type"]
+        return table_metadata.get("schema_type")
 
     def get_valid_table_names(self) -> List[str]:
         with self.session_scope() as session:
@@ -151,6 +201,18 @@ class DynamicAnnotationDB:
     def get_automap_items(result):
         return {k: v for (k, v) in result.__dict__.items() if k != "_sa_instance_state"}
 
+    def obj_to_dict(self, obj):
+        if obj:
+            return {
+                column.key: getattr(obj, column.key)
+                for column in inspect(obj).mapper.column_attrs
+            }
+        else:
+            return {}
+
+    def flatten_join(self, _list: List):
+        return [{**self.obj_to_dict(a), **self.obj_to_dict(b)} for a, b in _list]
+
     def drop_table(self, table_name: str) -> bool:
         """Drop a table, actually removes it from the database
         along with segmentation tables associated with it
@@ -198,9 +260,31 @@ class DynamicAnnotationDB:
             return [m.table_name for m in metadata]
 
     def _get_model_from_table_name(self, table_name: str) -> DeclarativeMeta:
-        self.mapped_base = automap_base()
-        self.mapped_base.prepare(self._engine, reflect=True)
-        return self.mapped_base.classes[table_name]
+        metadata = self.get_table_metadata(table_name)
+
+        if metadata:
+            if metadata["reference_table"]:
+                return self.schema_client.create_reference_annotation_model(
+                    table_name,
+                    metadata["schema_type"],
+                    metadata["reference_table"],
+                )
+            elif metadata.get("annotation_table") and table_name != metadata.get(
+                "annotation_table"
+            ):
+                return self.schema_client.create_segmentation_model(
+                    metadata["annotation_table"],
+                    metadata["schema_type"],
+                    metadata["pcg_table_name"],
+                )
+
+            else:
+                return self.schema_client.create_annotation_model(
+                    table_name, metadata["schema_type"]
+                )
+
+        else:
+            raise TableNotInMetadata
 
     def _get_model_columns(self, table_name: str) -> List[tuple]:
         """Return list of column names and types of a given table
@@ -219,6 +303,17 @@ class DynamicAnnotationDB:
         if not db_columns:
             raise TableNameNotFound(table_name)
         return [(column["name"], column["type"]) for column in db_columns]
+
+    def get_view_table(self, view_name: str) -> Table:
+        """Return the sqlalchemy table object for a view"""
+        if self._is_cached(view_name):
+            return self._cached_tables[view_name]
+        else:
+            meta = MetaData(self._engine)
+            meta.reflect(views=True, only=[view_name])
+            table = meta.tables[view_name]
+            self._cached_tables[view_name] = table
+            return table
 
     def cached_table(self, table_name: str) -> DeclarativeMeta:
         """Returns cached table 'DeclarativeMeta' callable for querying.
@@ -259,8 +354,19 @@ class DynamicAnnotationDB:
                 table_name
             )
             return True
-        except KeyError as key_error:
-            logging.error(f"Could not load table: {key_error}")
+        except TableNotInMetadata:
+            # cant find the table so lets try the slow reflection before giving up
+            self.mapped_base = automap_base()
+            self.mapped_base.prepare(self._engine, reflect=True)
+            try:
+                model = self.mapped_base.classes[table_name]
+                self._cached_tables[table_name] = model
+            except KeyError as table_error:
+                logging.error(f"Could not load table: {table_error}")
+                return False
+
+        except Exception as table_error:
+            logging.error(f"Could not load table: {table_error}")
             return False
 
     def _is_cached(self, table_name: str) -> bool:

@@ -55,7 +55,50 @@ def upgrade():
             ),
             sa.PrimaryKeyConstraint("id"),
         )
+    if "annotation_table_metadata" not in tables:
+        op.create_table(
+            "annotation_table_metadata",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("schema_type", sa.String(length=100), nullable=False),
+            sa.Column("table_name", sa.String(length=100), nullable=False),
+            sa.Column("valid", sa.Boolean(), nullable=True),
+            sa.Column("created", sa.DateTime(), nullable=False),
+            sa.Column("deleted", sa.DateTime(), nullable=True),
+            sa.Column("user_id", sa.String(length=255), nullable=False),
+            sa.Column("description", sa.Text(), nullable=False),
+            sa.Column("reference_table", sa.String(length=100), nullable=True),
+            sa.Column("flat_segmentation_source", sa.String(length=300), nullable=True),
+            sa.Column("voxel_resolution_x", sa.Float(), nullable=False),
+            sa.Column("voxel_resolution_y", sa.Float(), nullable=False),
+            sa.Column("voxel_resolution_z", sa.Float(), nullable=False),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("table_name"),
+        )
+
+    if "segmentation_table_metadata" not in tables:
+        op.create_table(
+            "segmentation_table_metadata",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("schema_type", sa.String(length=100), nullable=False),
+            sa.Column("table_name", sa.String(length=100), nullable=False),
+            sa.Column("valid", sa.Boolean(), nullable=True),
+            sa.Column("created", sa.DateTime(), nullable=False),
+            sa.Column("deleted", sa.DateTime(), nullable=True),
+            sa.Column("segmentation_source", sa.String(length=255), nullable=True),
+            sa.Column("pcg_table_name", sa.String(length=255), nullable=False),
+            sa.Column("last_updated", sa.DateTime(), nullable=True),
+            sa.Column("annotation_table", sa.String(length=100), nullable=True),
+            sa.ForeignKeyConstraint(
+                ["annotation_table"],
+                ["annotation_table_metadata.table_name"],
+            ),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("table_name"),
+        )
 
 
 def downgrade():
-    pass
+    op.drop_table("analysistables")
+    op.drop_table("analysisversion")
+    op.drop_table("segmentation_table_metadata")
+    op.drop_table("annotation_table_metadata")

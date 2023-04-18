@@ -2,6 +2,7 @@ import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
+from geoalchemy2.alembic_helpers import include_object, render_item
 
 from alembic import context
 
@@ -67,7 +68,14 @@ def run_migrations_online():
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            render_item=render_item,
+            include_object=include_object,
+        )
+        target_metadata.bind = connectable
+        target_metadata.reflect()
 
         with context.begin_transaction():
             context.run_migrations()
