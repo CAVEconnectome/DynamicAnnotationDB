@@ -212,18 +212,15 @@ class DynamicMigration:
             table_metadata = self.target_database.get_table_metadata(table)
             if table_metadata:
                 table = metadata.tables[table]
-            try:
-                fkey_mapping = self.add_cascade_delete_to_fkey(table, dry_run)
-                fkey_mappings.append(fkey_mapping)
-            except Exception as error:
-                raise error
+                try:
+                    fkey_mapping = self.add_cascade_delete_to_fkey(table, dry_run)
+                    fkey_mappings.append(fkey_mapping)
+                except Exception as error:
+                    raise error
         return fkey_mappings
 
     def add_cascade_delete_to_fkey(self, table: Table or str, dry_run: bool = True):
-        if isinstance(table, str):
-            table_name = table
-        else:
-            table_name = table.table
+        table_name = table.table
         fkeys_to_drop = {}
         fkey_to_add = {}
         for fk in self.target_inspector.get_foreign_keys(table_name):
