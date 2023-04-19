@@ -214,9 +214,13 @@ class DynamicMigration:
                 table = metadata.tables[table]
                 try:
                     fkey_mapping = self.add_cascade_delete_to_fkey(table, dry_run)
-                    fkey_mappings.append(fkey_mapping)
+                    if fkey_mapping:
+                        fkey_mappings.append(fkey_mapping)
                 except Exception as error:
                     raise error
+        if not fkey_mappings:
+            logging.info("No tables to migrate fkey constraints")
+            return None
         return fkey_mappings
 
     def add_cascade_delete_to_fkey(self, table: Table, dry_run: bool = True):
@@ -235,13 +239,6 @@ class DynamicMigration:
                 drop_constraint = DropConstraint(fkey)
                 fkeys_to_drop[fkey.name] = str(drop_constraint)
 
-                if not dry_run:
-                    with self.target_database.engine.connect() as conn:
-                        try:
-                            conn.execute(drop_constraint)
-                        except ProgrammingError as error:
-                            logging.error(f"{fkey.name} not present in the database: {error}")
-
                 # create a new foreign key constraint with the specified 'ondelete' option
                 new_fkey = ForeignKeyConstraint(
                     [table.c[c] for c in fk["constrained_columns"]],
@@ -254,25 +251,20 @@ class DynamicMigration:
                 fkey_to_add[new_fkey.name] = str(add_constraint)
 
                 if not dry_run:
-                    with self.target_database.engine.connect() as conn:
-                        # start a transaction
-                        trans = conn.begin()
-
-                        try:
-                            conn.execute(add_constraint)
-                            trans.commit()
-                            logging.info(
-                                f"Table {table_name} altered with CASCADE DELETE"
-                            )
-                        except Exception as error:
-                            trans.rollback()
-                            raise error
-        return {
-            f"Table Name: {table_name}": {
-                "Fkeys to drop": fkeys_to_drop,
-                "Fkeys to add": fkey_to_add,
+                    with self.target_database.engine.begin() as conn:
+                        conn.execute(drop_constraint)
+                        conn.execute(add_constraint)
+                        logging.info(f"Table {table_name} altered with CASCADE DELETE")
+        return (
+            {
+                f"Table Name: {table_name}": {
+                    "Fkeys to drop": fkeys_to_drop,
+                    "Fkeys to add": fkey_to_add,
+                }
             }
-        }
+            if fkeys_to_drop or fkey_to_add
+            else None
+        )
 
     def upgrade_annotation_models(self, dry_run: bool = True):
         """Upgrades annotation models present in the database
