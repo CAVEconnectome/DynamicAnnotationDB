@@ -326,15 +326,7 @@ class DynamicAnnotationClient:
         if len(annotations) > insertion_limit:
             raise AnnotationInsertLimitExceeded(insertion_limit, len(annotations))
 
-        metadata = self.db.get_table_metadata(table_name)
-        schema_type = metadata["schema_type"]
-        
-        # load reference table into metadata if not already present 
-        ref_table = metadata.get("reference_table")
-        if ref_table:
-            reference_table_name = self.db.cached_table(ref_table)
-
-        AnnotationModel = self.db.cached_table(table_name)
+        schema_type, AnnotationModel = self._load_model(table_name)
 
         formatted_anno_data = []
         for annotation in annotations:
@@ -382,16 +374,13 @@ class DynamicAnnotationClient:
         List[dict]
             list of returned annotations
         """
-        AnnotationModel = self.db.cached_table(table_name)
+        schema_type, AnnotationModel = self._load_model(table_name)
 
         annotations = (
             self.db.cached_session.query(AnnotationModel)
             .filter(AnnotationModel.id.in_(list(annotation_ids)))
             .all()
         )
-
-        metadata = self.db.get_table_metadata(table_name)
-        schema_type = metadata["schema_type"]
 
         anno_schema, __ = self.schema.split_flattened_schema(schema_type)
         schema = anno_schema(unknown=INCLUDE)
@@ -436,10 +425,8 @@ class DynamicAnnotationClient:
         anno_id = annotation.get("id")
         if not anno_id:
             return "Annotation requires an 'id' to update targeted row"
-        metadata = self.db.get_table_metadata(table_name)
-        schema_type = metadata["schema_type"]
+        schema_type, AnnotationModel = self._load_model(table_name)
 
-        AnnotationModel = self.db.cached_table(table_name)
         new_annotation, __ = self.schema.split_flattened_schema_data(
             schema_type, annotation
         )
@@ -504,7 +491,7 @@ class DynamicAnnotationClient:
         List[int]:
             List of ids that were marked as deleted and no longer valid.
         """
-        AnnotationModel = self.db.cached_table(table_name)
+        schema_type, AnnotationModel = self._load_model(table_name)
 
         annotations = (
             self.db.cached_session.query(AnnotationModel)
@@ -536,3 +523,15 @@ class DynamicAnnotationClient:
         else:
             return None
         return deleted_ids
+
+    def _load_model(self, table_name):
+        metadata = self.db.get_table_metadata(table_name)
+        schema_type = metadata["schema_type"]
+
+        # load reference table into metadata if not already present
+        ref_table = metadata.get("reference_table")
+        if ref_table:
+            reference_table_name = self.db.cached_table(ref_table)
+
+        AnnotationModel = self.db.cached_table(table_name)
+        return schema_type, AnnotationModel
