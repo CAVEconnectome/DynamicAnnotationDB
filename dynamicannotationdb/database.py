@@ -81,6 +81,31 @@ class DynamicAnnotationDB:
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
 
+    def get_unique_string_values(self, table_name: str):
+        """Get unique string values for a given table
+
+        Parameters
+        ----------
+        table_name : str
+            name of table contained within the aligned_volume database
+
+        Returns
+        -------
+        dict
+            dictionary of column names and unique values
+        """
+        model = self.cached_table(table_name)
+
+        unique_values = {}
+        with self.session_scope() as session:
+            for column_name in model.__table__.columns.keys():
+     
+                # if the column is a string
+                if model.__table__.columns[column_name].type.python_type == str:
+                    query = session.query(getattr(model, column_name)).distinct()
+                    unique_values[column_name] = [row[0] for row in query.all()]
+        return unique_values
+    
     def get_views(self, datastack_name: str):
         with self.session_scope() as session:
             query = session.query(AnalysisView).filter(
