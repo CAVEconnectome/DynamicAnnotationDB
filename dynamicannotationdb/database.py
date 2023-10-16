@@ -99,13 +99,17 @@ class DynamicAnnotationDB:
         unique_values = {}
         with self.session_scope() as session:
             for column_name in model.__table__.columns.keys():
-     
+
                 # if the column is a string
-                if model.__table__.columns[column_name].type.python_type == str:
+                try:
+                    python_type = model.__table__.columns[column_name].type.python_type
+                except NotImplementedError:
+                    python_type = None
+                if python_type == str:
                     query = session.query(getattr(model, column_name)).distinct()
                     unique_values[column_name] = [row[0] for row in query.all()]
         return unique_values
-    
+
     def get_views(self, datastack_name: str):
         with self.session_scope() as session:
             query = session.query(AnalysisView).filter(
