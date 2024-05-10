@@ -353,7 +353,8 @@ class DynamicAnnotationClient:
         table_name : str
             name of targeted table to update annotations
         annotation : dict
-            new data for that annotation
+            new data for that annotation, allows for partial updates but 
+            requires an 'id' field to target the row
 
         Returns
         -------
@@ -370,8 +371,27 @@ class DynamicAnnotationClient:
             return "Annotation requires an 'id' to update targeted row"
         schema_type, AnnotationModel = self._load_model(table_name)
 
+        try:
+            old_anno = (
+                self.db.cached_session.query(AnnotationModel)
+                .filter(AnnotationModel.id == anno_id)
+                .one()
+            )
+        except NoAnnotationsFoundWithID as e:
+            raise f"No result found for {anno_id}. Error: {e}" from e
+
+        if old_anno.superceded_id:
+            raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
+
+        # Merge old data with new changes
+        old_data = {
+            column.name: getattr(old_anno, column.name)
+            for column in old_anno.__table__.columns
+        }
+        updated_data = {**old_data, **annotation}
+
         new_annotation, __ = self.schema.split_flattened_schema_data(
-            schema_type, annotation
+            schema_type, updated_data
         )
 
         if hasattr(AnnotationModel, "created"):
@@ -381,32 +401,14 @@ class DynamicAnnotationClient:
 
         new_data = AnnotationModel(**new_annotation)
 
-        try:
-            old_anno = (
-                self.db.cached_session.query(AnnotationModel)
-                .filter(AnnotationModel.id == anno_id)
-                .one()
-            )
-        except NoAnnotationsFoundWithID as e:
-            raise f"No result found for {anno_id}. Error: {e}" from e
-        if hasattr(AnnotationModel, "target_id"):
-            new_data_map = self.db.get_automap_items(new_data)
-            for column_name, value in new_data_map.items():
-                setattr(old_anno, column_name, value)
-            old_anno.valid = True
-            update_map = {anno_id: old_anno.id}
-        else:
-            if old_anno.superceded_id:
-                raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
+        self.db.cached_session.add(new_data)
+        self.db.cached_session.flush()
 
-            self.db.cached_session.add(new_data)
-            self.db.cached_session.flush()
-
-            deleted_time = datetime.datetime.utcnow()
-            old_anno.deleted = deleted_time
-            old_anno.superceded_id = new_data.id
-            old_anno.valid = False
-            update_map = {anno_id: new_data.id}
+        deleted_time = datetime.datetime.utcnow()
+        old_anno.deleted = deleted_time
+        old_anno.superceded_id = new_data.id
+        old_anno.valid = False
+        update_map = {anno_id: new_data.id}
 
         (
             self.db.cached_session.query(AnnoMetadata)
