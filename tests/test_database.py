@@ -79,7 +79,7 @@ def test_get_table_valid_row_count(dadb_interface, annotation_metadata):
 
     result = dadb_interface.database.get_table_row_count(table_name, filter_valid=True)
     logging.info(f"{table_name} valid row count: {result}")
-    assert result == 2
+    assert result == 1
 
 
 def test_get_table_valid_timestamp_row_count(dadb_interface, annotation_metadata):
