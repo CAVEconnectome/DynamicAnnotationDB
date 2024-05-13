@@ -96,12 +96,11 @@ class DynamicAnnotationClient:
         existing_tables = self.db._check_table_is_unique(table_name)
 
         if table_metadata:
-            reference_table, track_updates = self.schema._parse_schema_metadata_params(
+            reference_table, _ = self.schema._parse_schema_metadata_params(
                 schema_type, table_name, table_metadata, existing_tables
             )
         else:
             reference_table = None
-            track_updates = None
 
         AnnotationModel = self.schema.create_annotation_model(
             table_name,
@@ -109,20 +108,6 @@ class DynamicAnnotationClient:
             table_metadata=table_metadata,
             with_crud_columns=with_crud_columns,
         )
-        if hasattr(AnnotationModel, "target_id") and reference_table:
-
-            reference_table_name = self.db.get_table_sql_metadata(reference_table)
-            logging.info(
-                f"{table_name} is targeting reference table: {reference_table_name}"
-            )
-            if track_updates:
-                self.create_reference_update_trigger(
-                    table_name, reference_table, AnnotationModel
-                )
-                description += (
-                    f" [Note: This table '{AnnotationModel.__name__}' will update the 'target_id' "
-                    f"foreign_key when updates are made to the '{reference_table}' table] "
-                )
 
         self.db.base.metadata.tables[AnnotationModel.__name__].create(
             bind=self.db.engine
@@ -228,48 +213,6 @@ class DynamicAnnotationClient:
         self.db.commit_session()
         logging.info(f"Table: {table_name} metadata updated ")
         return self.db.get_table_metadata(table_name)
-
-    def create_reference_update_trigger(self, table_name, reference_table, model):
-        func_name = f"{table_name}_update_reference_id"
-        func = DDL(
-            f"""
-                    CREATE or REPLACE function {func_name}()
-                    returns TRIGGER
-                    as $func$
-                    begin
-                        if EXISTS
-                            (SELECT 1
-                            FROM information_schema.columns
-                            WHERE table_name='{reference_table}'
-                                AND column_name='superceded_id') THEN
-                            update {table_name} ref
-                            set target_id = new.superceded_id
-                            where ref.target_id = old.id;
-                            return new;
-                        else
-                            return NULL;
-                        END if;
-                    end;
-                    $func$ language plpgsql;
-                    """
-        )
-        trigger = DDL(
-            f"""CREATE TRIGGER update_{table_name}_target_id AFTER UPDATE ON {reference_table}
-                    FOR EACH ROW EXECUTE PROCEDURE {func_name}();"""
-        )
-
-        event.listen(
-            model.__table__,
-            "after_create",
-            func.execute_if(dialect="postgresql"),
-        )
-
-        event.listen(
-            model.__table__,
-            "after_create",
-            trigger.execute_if(dialect="postgresql"),
-        )
-        return True
 
     def delete_table(self, table_name: str) -> bool:
         """Marks a table for deletion, which will
@@ -410,7 +353,8 @@ class DynamicAnnotationClient:
         table_name : str
             name of targeted table to update annotations
         annotation : dict
-            new data for that annotation
+            new data for that annotation, allows for partial updates but 
+            requires an 'id' field to target the row
 
         Returns
         -------
@@ -427,8 +371,27 @@ class DynamicAnnotationClient:
             return "Annotation requires an 'id' to update targeted row"
         schema_type, AnnotationModel = self._load_model(table_name)
 
+        try:
+            old_anno = (
+                self.db.cached_session.query(AnnotationModel)
+                .filter(AnnotationModel.id == anno_id)
+                .one()
+            )
+        except NoAnnotationsFoundWithID as e:
+            raise f"No result found for {anno_id}. Error: {e}" from e
+
+        if old_anno.superceded_id:
+            raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
+
+        # Merge old data with new changes
+        old_data = {
+            column.name: getattr(old_anno, column.name)
+            for column in old_anno.__table__.columns
+        }
+        updated_data = {**old_data, **annotation}
+
         new_annotation, __ = self.schema.split_flattened_schema_data(
-            schema_type, annotation
+            schema_type, updated_data
         )
 
         if hasattr(AnnotationModel, "created"):
@@ -438,32 +401,14 @@ class DynamicAnnotationClient:
 
         new_data = AnnotationModel(**new_annotation)
 
-        try:
-            old_anno = (
-                self.db.cached_session.query(AnnotationModel)
-                .filter(AnnotationModel.id == anno_id)
-                .one()
-            )
-        except NoAnnotationsFoundWithID as e:
-            raise f"No result found for {anno_id}. Error: {e}" from e
-        if hasattr(AnnotationModel, "target_id"):
-            new_data_map = self.db.get_automap_items(new_data)
-            for column_name, value in new_data_map.items():
-                setattr(old_anno, column_name, value)
-            old_anno.valid = True
-            update_map = {anno_id: old_anno.id}
-        else:
-            if old_anno.superceded_id:
-                raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
+        self.db.cached_session.add(new_data)
+        self.db.cached_session.flush()
 
-            self.db.cached_session.add(new_data)
-            self.db.cached_session.flush()
-
-            deleted_time = datetime.datetime.utcnow()
-            old_anno.deleted = deleted_time
-            old_anno.superceded_id = new_data.id
-            old_anno.valid = False
-            update_map = {anno_id: new_data.id}
+        deleted_time = datetime.datetime.utcnow()
+        old_anno.deleted = deleted_time
+        old_anno.superceded_id = new_data.id
+        old_anno.valid = False
+        update_map = {anno_id: new_data.id}
 
         (
             self.db.cached_session.query(AnnoMetadata)
