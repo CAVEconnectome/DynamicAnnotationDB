@@ -29,14 +29,16 @@ def _table_has_column(table, column):
 
 
 def upgrade():
-    with op.batch_alter_table("analysisversion", schema=None) as batch_op:
-        op.add_column(
-            "analysisversion",
-            sa.Column("parent_version", sa.Integer(), nullable=True),
-        )
-        op.create_foreign_key(
-            None, "analysisversion", "analysisversion", ["parent_version"], ["id"]
-        )
+    if not _table_has_column("analysisversion", "parent_version"):  
+    
+        with op.batch_alter_table("analysisversion", schema=None) as batch_op:
+            op.add_column(
+                "analysisversion",
+                sa.Column("parent_version", sa.Integer(), nullable=True),
+            )
+            op.create_foreign_key(
+                None, "analysisversion", "analysisversion", ["parent_version"], ["id"]
+            )
 
 
 def downgrade():
