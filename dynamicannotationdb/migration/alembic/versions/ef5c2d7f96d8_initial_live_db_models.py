@@ -1,14 +1,13 @@
 """Initial Live DB models
 
 Revision ID: ef5c2d7f96d8
-Revises: 
+Revises:
 Create Date: 2022-08-08 09:59:29.189065
 
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.engine import reflection
-from sqlalchemy import engine_from_config
 
 # revision identifiers, used by Alembic.
 revision = "ef5c2d7f96d8"
@@ -17,17 +16,19 @@ branch_labels = None
 depends_on = None
 
 
-def get_tables():
-    config = op.get_context().config
-    engine = engine_from_config(
-        config.get_section(config.config_ini_section), prefix="sqlalchemy."
-    )
-    inspector = reflection.Inspector.from_engine(engine)
+def get_tables(connection):
+    inspector = reflection.Inspector.from_engine(connection)
     return inspector.get_table_names()
 
 
+def _table_has_column(connection, table, column):
+    insp = reflection.Inspector.from_engine(connection)
+    return any(column in col["name"] for col in insp.get_columns(table))
+
+
 def upgrade():
-    tables = get_tables()
+    connection = op.get_bind()
+    tables = get_tables(connection)
     if "analysisversion" not in tables:
         op.create_table(
             "analysisversion",

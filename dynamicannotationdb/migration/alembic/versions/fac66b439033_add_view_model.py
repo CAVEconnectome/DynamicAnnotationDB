@@ -7,10 +7,7 @@ Create Date: 2023-03-07 12:42:08.667620
 """
 from alembic import op
 import sqlalchemy as sa
-
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import reflection
-from sqlalchemy import engine_from_config
 
 # revision identifiers, used by Alembic.
 revision = "fac66b439033"
@@ -18,17 +15,20 @@ down_revision = "309cf493a1e2"
 branch_labels = None
 depends_on = None
 
-def get_tables():
-    config = op.get_context().config
-    engine = engine_from_config(
-        config.get_section(config.config_ini_section), prefix="sqlalchemy."
-    )
-    inspector = reflection.Inspector.from_engine(engine)
+
+def get_tables(connection):
+    inspector = reflection.Inspector.from_engine(connection)
     return inspector.get_table_names()
 
 
+def _table_has_column(connection, table, column):
+    insp = reflection.Inspector.from_engine(connection)
+    return any(column in col["name"] for col in insp.get_columns(table))
+
+
 def upgrade():
-    tables = get_tables()
+    connection = op.get_bind()
+    tables = get_tables(connection)
     if "analysisviews" not in tables:
         op.create_table(
             "analysisviews",
