@@ -109,6 +109,16 @@ class DynamicAnnotationClient:
             with_crud_columns=with_crud_columns,
         )
 
+        if hasattr(AnnotationModel, "target_id") and reference_table:
+            reference_table_name = self.db.get_table_sql_metadata(reference_table)
+            logging.info(
+                f"{table_name} is targeting reference table: {reference_table_name}"
+            )
+
+            self.create_reference_update_trigger(
+                table_name, reference_table, AnnotationModel
+            )
+
         self.db.base.metadata.tables[AnnotationModel.__name__].create(
             bind=self.db.engine
         )
@@ -140,6 +150,76 @@ class DynamicAnnotationClient:
             f"Table: {table_name} created using {AnnotationModel} model at {creation_time}"
         )
         return table_name
+
+    def create_reference_update_trigger(self, table_name, reference_table, model):
+        func_name = f"{table_name}_update_reference_id"
+
+        column_names = [
+            col.name
+            for col in model.__table__.columns
+            if col.name not in ["id", "target_id"]
+        ]
+        column_names_str = ", ".join(column_names)
+
+        func = DDL(
+            f"""
+            CREATE OR REPLACE FUNCTION {func_name}()
+            RETURNS TRIGGER
+            AS $func$
+            DECLARE
+                new_id INTEGER;
+            BEGIN
+                IF EXISTS
+                    (SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='{reference_table}'
+                        AND column_name='superceded_id') THEN
+                    IF NEW.superceded_id IS NOT NULL THEN
+                        -- Copy the current row from {table_name} without the id column
+                        INSERT INTO {table_name} ({column_names_str}, target_id)
+                        SELECT {column_names_str}, {table_name}.target_id
+                        FROM {table_name}
+                        WHERE {table_name}.target_id = OLD.id
+                        RETURNING id INTO new_id;
+                        
+                        -- Update the new row's target_id to new.superceded_id
+                        UPDATE {table_name}
+                        SET target_id = NEW.superceded_id
+                        WHERE id = new_id;
+                        
+                        -- Update the original row's superceded_id and valid column if it exists
+                        UPDATE {table_name}
+                        SET superceded_id = new_id,
+                            valid = (CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='{table_name}' AND column_name='valid') THEN FALSE ELSE valid END),
+                            deleted = (CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='{table_name}' AND column_name='deleted') THEN timezone('utc', now()) ELSE deleted END)
+                        WHERE target_id = OLD.id;
+                    END IF;
+                    RETURN NEW;
+                ELSE
+                    RETURN NULL;
+                END IF;
+            END;
+            $func$ LANGUAGE plpgsql;
+        """)
+
+        trigger = DDL(
+            f"""
+            CREATE TRIGGER update_{table_name}_target_id AFTER UPDATE OF superceded_id ON {reference_table}
+            FOR EACH ROW EXECUTE PROCEDURE {func_name}();
+        """)
+
+        event.listen(
+            model.__table__,
+            "after_create",
+            func.execute_if(dialect="postgresql"),
+        )
+
+        event.listen(
+            model.__table__,
+            "after_create",
+            trigger.execute_if(dialect="postgresql"),
+        )
+        return True
 
     def update_table_metadata(
         self,
@@ -273,7 +353,6 @@ class DynamicAnnotationClient:
 
         formatted_anno_data = []
         for annotation in annotations:
-
             annotation_data, __ = self.schema.split_flattened_schema_data(
                 schema_type, annotation
             )
@@ -353,7 +432,7 @@ class DynamicAnnotationClient:
         table_name : str
             name of targeted table to update annotations
         annotation : dict
-            new data for that annotation, allows for partial updates but 
+            new data for that annotation, allows for partial updates but
             requires an 'id' field to target the row
 
         Returns
@@ -381,6 +460,16 @@ class DynamicAnnotationClient:
             raise f"No result found for {anno_id}. Error: {e}" from e
 
         if old_anno.superceded_id:
+            # find the latest annotation by finding the annotation with no superceded_id
+            while old_anno.superceded_id:
+                old_anno = (
+                    self.db.cached_session.query(AnnotationModel)
+                    .filter(AnnotationModel.id == old_anno.superceded_id)
+                    .one()
+                )
+                logging.debug(f"Found superceded annotation: {old_anno.id} {old_anno.superceded_id}")
+            logging.debug(f"Found latest annotation: {old_anno.id}")
+
             raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
 
         # Merge old data with new changes
