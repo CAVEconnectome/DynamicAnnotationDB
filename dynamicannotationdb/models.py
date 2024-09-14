@@ -1,5 +1,5 @@
 import enum
-
+from typing import Optional
 from emannotationschemas.models import Base
 from sqlalchemy import (
     Boolean,
@@ -11,12 +11,14 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    Enum,
     JSON,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects import postgresql
+
+from marshmallow import Schema, fields, post_load
+from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 
 # Models that will be created in the 'materialized' database.
 MatBase = declarative_base()
@@ -125,6 +127,13 @@ class AnnoMetadata(Base):
     last_modified = Column(DateTime, nullable=False)
 
 
+class AnnotationMetadataSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = AnnoMetadata
+        include_relationships = True
+        load_instance = True
+
+
 class SegmentationMetadata(Base):
     __tablename__ = "segmentation_table_metadata"
     id = Column(Integer, primary_key=True)
@@ -139,6 +148,35 @@ class SegmentationMetadata(Base):
     annotation_table = Column(
         String(100), ForeignKey("annotation_table_metadata.table_name")
     )
+
+
+class SegmentationMetadataSchema(SQLAlchemyAutoSchema):
+    class Meta:
+        model = SegmentationMetadata
+        include_relationships = True
+        load_instance = True
+
+
+class CombinedMetadata:
+    def __init__(
+        self,
+        table_name: str,
+        anno_metadata: Optional[AnnoMetadata] = None,
+        seg_metadata: Optional[SegmentationMetadata] = None,
+    ):
+        self.table_name = table_name
+        self.anno_metadata = anno_metadata
+        self.seg_metadata = seg_metadata
+
+
+class CombinedMetadataSchema(Schema):
+    table_name = fields.Str(required=True)
+    anno_metadata = fields.Nested(AnnotationMetadataSchema, allow_none=True)
+    seg_metadata = fields.Nested(SegmentationMetadataSchema, allow_none=True)
+
+    @post_load
+    def make_combined_metadata(self, data, **kwargs):
+        return CombinedMetadata(**data)
 
 
 class CombinedTableMetadata(Base):
