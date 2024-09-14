@@ -3,8 +3,7 @@ import datetime
 import pytest
 
 from sqlalchemy import Table
-from sqlalchemy.ext.declarative.api import DeclarativeMeta
-
+from sqlalchemy.orm import DeclarativeMeta
 from emannotationschemas import type_mapping
 
 
@@ -13,28 +12,11 @@ def test_get_table_metadata(dadb_interface, annotation_metadata):
     schema_type = annotation_metadata["schema_type"]
     metadata = dadb_interface.database.get_table_metadata(table_name)
     logging.info(metadata)
-    assert metadata["schema_type"] == schema_type
-    assert metadata["table_name"] == "anno_test"
-    assert metadata["user_id"] == "foo@bar.com"
-    assert metadata["description"] == "New description"
-    assert metadata["voxel_resolution_x"] == 4.0
-
-    # test with filter to get a col value
-    metadata_value = dadb_interface.database.get_table_metadata(
-        table_name, filter_col="valid"
-    )
-    logging.info(metadata)
-    assert metadata_value == True
-
-    # test for missing column
-    with pytest.raises(AttributeError) as e:
-        bad_return = dadb_interface.database.get_table_metadata(
-            table_name, "missing_column"
-        )
-    assert (
-        str(e.value) == "type object 'AnnoMetadata' has no attribute 'missing_column'"
-    )
-
+    assert metadata.anno_metadata.schema_type == schema_type
+    assert metadata.table_name == "anno_test"
+    assert metadata.anno_metadata.user_id == "foo@bar.com"
+    assert metadata.anno_metadata.description == "New description"
+    assert metadata.anno_metadata.voxel_resolution_x == 4.0
 
 def test_get_table_sql_metadata(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]

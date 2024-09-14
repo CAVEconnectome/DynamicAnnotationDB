@@ -79,8 +79,9 @@ def test_create_reference_table(dadb_interface, annotation_metadata):
     assert table_name == table
 
     table_info = dadb_interface.database.get_table_metadata(table)
-    assert table_info["reference_table"] == "anno_test"
-
+    
+    assert table_info.anno_metadata.reference_table == "anno_test"
+    assert table_info.table_name == table_name
 
 def test_create_nested_reference_table(dadb_interface, annotation_metadata):
     table_name = "reference_tag"
@@ -108,7 +109,8 @@ def test_create_nested_reference_table(dadb_interface, annotation_metadata):
     assert table_name == table
 
     table_info = dadb_interface.database.get_table_metadata(table)
-    assert table_info["reference_table"] == "presynaptic_bouton_types"
+    
+    assert table_info.anno_metadata.reference_table == "presynaptic_bouton_types"
 
 
 def test_bad_schema_reference_table(dadb_interface, annotation_metadata):
@@ -306,4 +308,4 @@ def test_update_table_metadata(dadb_interface, annotation_metadata):
         table_name, description="New description"
     )
 
-    assert updated_metadata["description"] == "New description"
+    assert updated_metadata.anno_metadata.description == "New description"

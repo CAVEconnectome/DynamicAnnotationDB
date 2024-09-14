@@ -6,7 +6,7 @@ from emannotationschemas.flatten import create_flattened_schema, flatten_dict
 from emannotationschemas.schemas.base import ReferenceAnnotation, SegmentationField
 from marshmallow import EXCLUDE, Schema
 
-from .errors import SelfReferenceTableError, TableNameNotFound
+from dynamicannotationdb.errors import SelfReferenceTableError, TableNameNotFound
 
 
 class DynamicSchemaClient:

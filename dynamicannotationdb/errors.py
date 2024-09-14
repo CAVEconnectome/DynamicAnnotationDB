@@ -13,8 +13,10 @@ class TableNameNotFound(KeyError):
 class TableAlreadyExists(KeyError):
     """Table name already exists in the Metadata table"""
 
+
 class TableNotInMetadata(KeyError):
     """Table does not exist in the Metadata table"""
+
 
 class IdsAlreadyExists(KeyError):
     """Annotation IDs already exists in the segmentation table"""
@@ -30,9 +32,9 @@ class BadRequest(Exception):
 
 class UpdateAnnotationError(ValueError):
     def __init__(
-            self,
-            target_id: int,
-            superseded_id: int,
+        self,
+        target_id: int,
+        superseded_id: int,
     ):
         self.target_id = target_id
         self.message = f"Annotation with ID {target_id} has already been superseded by annotation ID {superseded_id}, update annotation ID {superseded_id} instead"
@@ -46,7 +48,7 @@ class AnnotationInsertLimitExceeded(ValueError):
     """Exception raised when amount of annotations exceeds defined limit."""
 
     def __init__(
-            self, limit: int, length: int, message: str = "Annotation limit exceeded"
+        self, limit: int, length: int, message: str = "Annotation limit exceeded"
     ):
         self.limit = limit
         self.message = (

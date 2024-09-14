@@ -1,43 +1,35 @@
 import datetime
 import logging
-from typing import List
+from typing import List, Dict, Any
 
 from marshmallow import INCLUDE
-from sqlalchemy import DDL, event
+from sqlalchemy import select, update
 
-from .database import DynamicAnnotationDB
-from .errors import (
+from dynamicannotationdb.database import DynamicAnnotationDB
+from dynamicannotationdb.errors import (
     AnnotationInsertLimitExceeded,
     NoAnnotationsFoundWithID,
     UpdateAnnotationError,
     TableNameNotFound,
 )
-from .models import AnnoMetadata
-from .schema import DynamicSchemaClient
+from dynamicannotationdb.models import AnnoMetadata
+from dynamicannotationdb.schema import DynamicSchemaClient
 
 
 class DynamicAnnotationClient:
     def __init__(self, sql_url: str) -> None:
         self.db = DynamicAnnotationDB(sql_url)
         self.schema = DynamicSchemaClient()
+        self._table = None
 
     @property
     def table(self):
+        if self._table is None:
+            raise ValueError("No table loaded. Use load_table() first.")
         return self._table
 
     def load_table(self, table_name: str):
-        """Load a table
-
-        Parameters
-        ----------
-        table_name : str
-            name of table
-
-        Returns
-        -------
-        DeclarativeMeta
-            the sqlalchemy table of that name
-        """
+        """Load a table"""
         self._table = self.db.cached_table(table_name)
         return self._table
 
@@ -95,18 +87,17 @@ class DynamicAnnotationClient:
         """
         existing_tables = self.db._check_table_is_unique(table_name)
 
+        reference_table = None
         if table_metadata:
             reference_table, _ = self.schema._parse_schema_metadata_params(
                 schema_type, table_name, table_metadata, existing_tables
             )
-        else:
-            reference_table = None
 
         AnnotationModel = self.schema.create_annotation_model(
             table_name,
             schema_type,
             table_metadata=table_metadata,
-            with_crud_columns=with_crud_columns,
+            with_crud_columns=True,
         )
 
         self.db.base.metadata.tables[AnnotationModel.__name__].create(
@@ -134,23 +125,16 @@ class DynamicAnnotationClient:
 
         logging.info(f"Metadata for table: {table_name} is {metadata_dict}")
         anno_metadata = AnnoMetadata(**metadata_dict)
-        self.db.cached_session.add(anno_metadata)
-        self.db.commit_session()
+
+        with self.db.session_scope() as session:
+            session.add(anno_metadata)
+
         logging.info(
             f"Table: {table_name} created using {AnnotationModel} model at {creation_time}"
         )
         return table_name
 
-    def update_table_metadata(
-        self,
-        table_name: str,
-        description: str = None,
-        user_id: str = None,
-        flat_segmentation_source: str = None,
-        read_permission: str = None,
-        write_permission: str = None,
-        notice_text: str = None,
-    ):
+    def update_table_metadata(self, table_name: str, **kwargs):
         r"""Update metadata for an annotation table.
 
         Parameters
@@ -184,34 +168,30 @@ class DynamicAnnotationClient:
         TableNameNotFound
             If no table with 'table_name' found in the metadata table
         """
-        metadata = (
-            self.db.cached_session.query(AnnoMetadata)
-            .filter(AnnoMetadata.table_name == table_name)
-            .first()
-        )
-        if metadata is None:
-            raise TableNameNotFound(
-                f"no table named {table_name} in database {self.sql_url} "
-            )
+        with self.db.session_scope() as session:
+            metadata = session.execute(
+                select(AnnoMetadata).where(AnnoMetadata.table_name == table_name)
+            ).scalar_one_or_none()
 
-        update_dict = {
-            "description": description,
-            "user_id": user_id,
-            "flat_segmentation_source": flat_segmentation_source,
-            "read_permission": read_permission,
-            "write_permission": write_permission,
-        }
-        update_dict = {k: v for k, v in update_dict.items() if v is not None}
-        if notice_text is not None:
-            if len(notice_text) == 0:
-                update_dict["notice_text"] = None
-            else:
-                update_dict["notice_text"] = notice_text
-        for column, value in update_dict.items():
-            if hasattr(metadata, str(column)):
-                setattr(metadata, column, value)
-        self.db.commit_session()
-        logging.info(f"Table: {table_name} metadata updated ")
+            if metadata is None:
+                raise TableNameNotFound(f"no table named {table_name} in database")
+
+            for key, value in kwargs.items():
+                if hasattr(metadata, key):
+                    setattr(metadata, key, value)
+
+            if "notice_text" in kwargs and kwargs["notice_text"] == "":
+                metadata.notice_text = None
+
+            # Explicitly flush the session to ensure the changes are visible
+            session.flush()
+
+            # Refresh the metadata object to get the updated values
+            session.refresh(metadata)
+
+        self.db.get_table_metadata.cache_clear()
+        logging.info(f"Table: {table_name} metadata updated")
+
         return self.db.get_table_metadata(table_name)
 
     def delete_table(self, table_name: str) -> bool:
@@ -230,20 +210,21 @@ class DynamicAnnotationClient:
         bool
             whether table was successfully deleted
         """
-        metadata = (
-            self.db.cached_session.query(AnnoMetadata)
-            .filter(AnnoMetadata.table_name == table_name)
-            .first()
-        )
-        if metadata is None:
-            raise TableNameNotFound(
-                f"no table named {table_name} in database {self.sql_url} "
-            )
-        metadata.deleted = datetime.datetime.utcnow()
-        self.db.commit_session()
+        with self.db.session_scope() as session:
+            metadata = session.execute(
+                select(AnnoMetadata).where(AnnoMetadata.table_name == table_name)
+            ).scalar_one_or_none()
+
+            if metadata is None:
+                raise TableNameNotFound(f"no table named {table_name} in database")
+
+            metadata.deleted = datetime.datetime.utcnow()
+
         return True
 
-    def insert_annotations(self, table_name: str, annotations: List[dict]):
+    def insert_annotations(
+        self, table_name: str, annotations: List[Dict[str, Any]]
+    ) -> List[int]:
         """Insert some annotations.
 
         Parameters
@@ -273,36 +254,33 @@ class DynamicAnnotationClient:
 
         formatted_anno_data = []
         for annotation in annotations:
-
-            annotation_data, __ = self.schema.split_flattened_schema_data(
+            annotation_data, _ = self.schema.split_flattened_schema_data(
                 schema_type, annotation
             )
-            if annotation.get("id"):
+            if "id" in annotation:
                 annotation_data["id"] = annotation["id"]
             if hasattr(AnnotationModel, "created"):
                 annotation_data["created"] = datetime.datetime.utcnow()
             annotation_data["valid"] = True
             formatted_anno_data.append(annotation_data)
 
-        annos = [
-            AnnotationModel(**annotation_data)
-            for annotation_data in formatted_anno_data
-        ]
+        with self.db.session_scope() as session:
+            annos = [AnnotationModel(**data) for data in formatted_anno_data]
+            session.add_all(annos)
+            session.flush()
+            anno_ids = [anno.id for anno in annos]
 
-        self.db.cached_session.add_all(annos)
-        self.db.cached_session.flush()
-        anno_ids = [anno.id for anno in annos]
+            session.execute(
+                update(AnnoMetadata)
+                .where(AnnoMetadata.table_name == table_name)
+                .values(last_modified=datetime.datetime.utcnow())
+            )
 
-        (
-            self.db.cached_session.query(AnnoMetadata)
-            .filter(AnnoMetadata.table_name == table_name)
-            .update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
-        )
-
-        self.db.commit_session()
         return anno_ids
 
-    def get_annotations(self, table_name: str, annotation_ids: List[int]) -> List[dict]:
+    def get_annotations(
+        self, table_name: str, annotation_ids: List[int]
+    ) -> List[Dict[str, Any]]:
         """Get a set of annotations by ID
 
         Parameters
@@ -319,33 +297,38 @@ class DynamicAnnotationClient:
         """
         schema_type, AnnotationModel = self._load_model(table_name)
 
-        annotations = (
-            self.db.cached_session.query(AnnotationModel)
-            .filter(AnnotationModel.id.in_(list(annotation_ids)))
-            .all()
-        )
+        with self.db.session_scope() as session:
+            annotations = (
+                session.execute(
+                    select(AnnotationModel).where(
+                        AnnotationModel.id.in_(annotation_ids)
+                    )
+                )
+                .scalars()
+                .all()
+            )
 
-        anno_schema, __ = self.schema.split_flattened_schema(schema_type)
+        anno_schema, _ = self.schema.split_flattened_schema(schema_type)
         schema = anno_schema(unknown=INCLUDE)
+
         try:
             data = []
-
             for anno in annotations:
-                anno_data = anno.__dict__
-                anno_data["created"] = str(anno_data.get("created"))
-                anno_data["deleted"] = str(anno_data.get("deleted"))
                 anno_data = {
-                    k: v for (k, v) in anno_data.items() if k != "_sa_instance_state"
+                    k: str(v) if isinstance(v, datetime.datetime) else v
+                    for k, v in anno.__dict__.items()
+                    if not k.startswith("_")
                 }
                 data.append(anno_data)
 
             return schema.load(data, many=True)
-
         except Exception as e:
             logging.exception(e)
             raise NoAnnotationsFoundWithID(annotation_ids) from e
 
-    def update_annotation(self, table_name: str, annotation: dict) -> str:
+    def update_annotation(
+        self, table_name: str, annotation: Dict[str, Any]
+    ) -> Dict[int, int]:
         """Update an annotation
 
         Parameters
@@ -353,7 +336,7 @@ class DynamicAnnotationClient:
         table_name : str
             name of targeted table to update annotations
         annotation : dict
-            new data for that annotation, allows for partial updates but 
+            new data for that annotation, allows for partial updates but
             requires an 'id' field to target the row
 
         Returns
@@ -368,56 +351,52 @@ class DynamicAnnotationClient:
         """
         anno_id = annotation.get("id")
         if not anno_id:
-            return "Annotation requires an 'id' to update targeted row"
+            raise ValueError("Annotation requires an 'id' to update targeted row")
+
         schema_type, AnnotationModel = self._load_model(table_name)
 
-        try:
-            old_anno = (
-                self.db.cached_session.query(AnnotationModel)
-                .filter(AnnotationModel.id == anno_id)
-                .one()
+        with self.db.session_scope() as session:
+            old_anno = session.execute(
+                select(AnnotationModel).where(AnnotationModel.id == anno_id)
+            ).scalar_one_or_none()
+
+            if old_anno is None:
+                raise NoAnnotationsFoundWithID(f"No result found for {anno_id}")
+
+            if old_anno.superceded_id:
+                raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
+
+            old_data = {
+                column.name: getattr(old_anno, column.name)
+                for column in old_anno.__table__.columns
+            }
+            updated_data = {**old_data, **annotation}
+
+            new_annotation, _ = self.schema.split_flattened_schema_data(
+                schema_type, updated_data
             )
-        except NoAnnotationsFoundWithID as e:
-            raise f"No result found for {anno_id}. Error: {e}" from e
 
-        if old_anno.superceded_id:
-            raise UpdateAnnotationError(anno_id, old_anno.superceded_id)
+            if hasattr(AnnotationModel, "created"):
+                new_annotation["created"] = datetime.datetime.utcnow()
+            if hasattr(AnnotationModel, "valid"):
+                new_annotation["valid"] = True
 
-        # Merge old data with new changes
-        old_data = {
-            column.name: getattr(old_anno, column.name)
-            for column in old_anno.__table__.columns
-        }
-        updated_data = {**old_data, **annotation}
+            new_data = AnnotationModel(**new_annotation)
+            session.add(new_data)
+            session.flush()
 
-        new_annotation, __ = self.schema.split_flattened_schema_data(
-            schema_type, updated_data
-        )
+            deleted_time = datetime.datetime.utcnow()
+            old_anno.deleted = deleted_time
+            old_anno.superceded_id = new_data.id
+            old_anno.valid = False
 
-        if hasattr(AnnotationModel, "created"):
-            new_annotation["created"] = datetime.datetime.utcnow()
-        if hasattr(AnnotationModel, "valid"):
-            new_annotation["valid"] = True
+            session.execute(
+                update(AnnoMetadata)
+                .where(AnnoMetadata.table_name == table_name)
+                .values(last_modified=datetime.datetime.utcnow())
+            )
 
-        new_data = AnnotationModel(**new_annotation)
-
-        self.db.cached_session.add(new_data)
-        self.db.cached_session.flush()
-
-        deleted_time = datetime.datetime.utcnow()
-        old_anno.deleted = deleted_time
-        old_anno.superceded_id = new_data.id
-        old_anno.valid = False
-        update_map = {anno_id: new_data.id}
-
-        (
-            self.db.cached_session.query(AnnoMetadata)
-            .filter(AnnoMetadata.table_name == table_name)
-            .update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
-        )
-        self.db.commit_session()
-
-        return update_map
+        return {anno_id: new_data.id}
 
     def delete_annotation(
         self, table_name: str, annotation_ids: List[int]
@@ -438,45 +417,45 @@ class DynamicAnnotationClient:
         """
         schema_type, AnnotationModel = self._load_model(table_name)
 
-        annotations = (
-            self.db.cached_session.query(AnnotationModel)
-            .filter(AnnotationModel.id.in_(annotation_ids))
-            .all()
-        )
-        deleted_ids = []
-        if annotations:
+        with self.db.session_scope() as session:
+            annotations = (
+                session.execute(
+                    select(AnnotationModel).where(
+                        AnnotationModel.id.in_(annotation_ids)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            if not annotations:
+                return []
+
             deleted_time = datetime.datetime.utcnow()
+            deleted_ids = []
 
             for annotation in annotations:
-                # TODO: This should be deprecated, as all tables should have
-                # CRUD columns now, but leaving this for backward safety.
                 if not hasattr(AnnotationModel, "deleted"):
-                    self.db.cached_session.delete(annotation)
+                    session.delete(annotation)
                 else:
                     annotation.deleted = deleted_time
                     annotation.valid = False
                 deleted_ids.append(annotation.id)
 
-            (
-                self.db.cached_session.query(AnnoMetadata)
-                .filter(AnnoMetadata.table_name == table_name)
-                .update({AnnoMetadata.last_modified: datetime.datetime.utcnow()})
+            session.execute(
+                update(AnnoMetadata)
+                .where(AnnoMetadata.table_name == table_name)
+                .values(last_modified=datetime.datetime.utcnow())
             )
 
-            self.db.commit_session()
-
-        else:
-            return None
         return deleted_ids
 
     def _load_model(self, table_name):
         metadata = self.db.get_table_metadata(table_name)
-        schema_type = metadata["schema_type"]
+        schema_type = metadata.anno_metadata.schema_type
 
-        # load reference table into metadata if not already present
-        ref_table = metadata.get("reference_table")
-        if ref_table:
-            reference_table_name = self.db.cached_table(ref_table)
+        if metadata.anno_metadata.reference_table:
+            self.db.cached_table(metadata.anno_metadata.reference_table)
 
         AnnotationModel = self.db.cached_table(table_name)
         return schema_type, AnnotationModel

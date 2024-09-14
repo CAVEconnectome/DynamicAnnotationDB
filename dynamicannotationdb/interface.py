@@ -1,7 +1,6 @@
 import logging
-
-from sqlalchemy import create_engine
-from sqlalchemy.engine.url import make_url
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.pool import NullPool
 
 from .annotation import DynamicAnnotationClient
@@ -32,7 +31,6 @@ class DynamicAnnotationInterface:
         linked to annotation tables.
     schema :
         Wrapper for EMAnnotationSchemas to generate dynamic sqlalchemy models.
-
     """
 
     def __init__(
@@ -57,15 +55,22 @@ class DynamicAnnotationInterface:
         url : str
             base path to the sql server
         aligned_volume : str
-            name of aligned volume which the database name will inherent
+            name of aligned volume which the database name will inherit
 
         Returns
         -------
         sql_url instance
         """
         sql_base_uri = url.rpartition("/")[0]
-
-        sql_uri = make_url(f"{sql_base_uri}/{aligned_volume}")
+        parsed_url = make_url(url)
+        sql_uri = URL.create(
+            drivername=parsed_url.drivername,
+            username=parsed_url.username,
+            password=parsed_url.password,
+            host=parsed_url.host,
+            port=parsed_url.port,
+            database=aligned_volume,
+        )
 
         temp_engine = create_engine(
             sql_base_uri,
@@ -75,11 +80,12 @@ class DynamicAnnotationInterface:
         )
 
         with temp_engine.connect() as connection:
-            connection.execute("commit")
             database_exists = connection.execute(
-                f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{sql_uri.database}'"
-            )
-            if not database_exists.fetchone():
+                text(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = :dbname"),
+                {"dbname": sql_uri.database},
+            ).scalar()
+
+            if not database_exists:
                 logging.info(f"Database {aligned_volume} does not exist.")
                 self._create_aligned_volume_database(sql_uri, connection)
 
@@ -95,21 +101,25 @@ class DynamicAnnotationInterface:
         logging.info(f"Creating new database: {sql_uri.database}")
 
         connection.execute(
-            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
-                           WHERE pid <> pg_backend_pid() AND datname = '{sql_uri.database}';"
+            text(
+                f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = :dbname"
+            ),
+            {"dbname": sql_uri.database},
         )
 
         # check if template exists, create if missing
         template_exist = connection.execute(
-            "SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'template_postgis'"
-        )
+            text(
+                "SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'template_postgis'"
+            )
+        ).scalar()
 
-        if not template_exist.fetchone():
+        if not template_exist:
             # create postgis template db
-            connection.execute("CREATE DATABASE template_postgis")
+            connection.execute(text("CREATE DATABASE template_postgis"))
 
             # create postgis extension
-            template_uri = make_url(
+            template_uri = URL.create(
                 f"{str(sql_uri).rpartition('/')[0]}/template_postgis"
             )
             template_engine = create_engine(
@@ -119,12 +129,14 @@ class DynamicAnnotationInterface:
                 pool_pre_ping=True,
             )
             with template_engine.connect() as template_connection:
-                template_connection.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+                template_connection.execute(
+                    text("CREATE EXTENSION IF NOT EXISTS postgis")
+                )
             template_engine.dispose()
 
         # finally create new annotation database
         connection.execute(
-            f"CREATE DATABASE {sql_uri.database} TEMPLATE template_postgis"
+            text(f"CREATE DATABASE {sql_uri.database} TEMPLATE template_postgis")
         )
         aligned_volume_engine = create_engine(
             sql_uri,

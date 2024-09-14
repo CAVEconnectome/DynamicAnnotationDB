@@ -1,9 +1,11 @@
-marshmallow==3.5.1
+marshmallow
 emannotationschemas>=5.4.0
-sqlalchemy<1.4
+sqlalchemy
+marshmallow-sqlalchemy
+marshmallow-enum
 psycopg2-binary
 geoalchemy2
 pytz
 alembic
 shapely
-jsonschema<4.0
+jsonschema
