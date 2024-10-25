@@ -12,7 +12,7 @@ from sqlalchemy.sql.schema import Table
 
 from .errors import TableAlreadyExists, TableNameNotFound, TableNotInMetadata
 from .models import AnnoMetadata, Base, SegmentationMetadata, AnalysisView
-from .schema import DynamicSchemaClient
+from .schema_client import DynamicSchemaClient
 
 
 class DynamicAnnotationDB:

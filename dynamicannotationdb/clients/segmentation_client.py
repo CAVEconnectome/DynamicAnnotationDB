@@ -4,7 +4,7 @@ from typing import List
 
 from marshmallow import INCLUDE
 
-from .database import DynamicAnnotationDB
+from .database_client import DynamicAnnotationDB
 from .errors import (
     AnnotationInsertLimitExceeded,
     IdsAlreadyExists,
@@ -12,8 +12,8 @@ from .errors import (
 )
 from .key_utils import build_segmentation_table_name
 from .models import SegmentationMetadata
-from .schema import DynamicSchemaClient
-from .errors import TableNameNotFound
+from .schema_client import DynamicSchemaClient
+from .client.errors import TableNameNotFound
 
 class DynamicSegmentationClient:
     def __init__(self, sql_url: str) -> None:

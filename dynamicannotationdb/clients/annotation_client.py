@@ -5,7 +5,7 @@ from typing import List
 from marshmallow import INCLUDE
 from sqlalchemy import DDL, event
 
-from .database import DynamicAnnotationDB
+from .database_client import DynamicAnnotationDB
 from .errors import (
     AnnotationInsertLimitExceeded,
     NoAnnotationsFoundWithID,
@@ -13,7 +13,7 @@ from .errors import (
     TableNameNotFound,
 )
 from .models import AnnoMetadata
-from .schema import DynamicSchemaClient
+from .schema_client import DynamicSchemaClient
 
 
 class DynamicAnnotationClient:

@@ -4,11 +4,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.pool import NullPool
 
-from .annotation import DynamicAnnotationClient
-from .database import DynamicAnnotationDB
+from .clients.annotation_client import DynamicAnnotationClient
+from .clients.database_client import DynamicAnnotationDB
+from .clients.schema_client import DynamicSchemaClient
+from .clients.segmentation_client import DynamicSegmentationClient
 from .models import Base
-from .schema import DynamicSchemaClient
-from .segmentation import DynamicSegmentationClient
 
 
 class DynamicAnnotationInterface:
