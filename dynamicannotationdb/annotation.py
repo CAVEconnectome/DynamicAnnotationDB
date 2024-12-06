@@ -202,9 +202,9 @@ class DynamicAnnotationClient:
             "write_permission": write_permission,
         }
         update_dict = {k: v for k, v in update_dict.items() if v is not None}
-        if notice_text.lower() == "none":
-            notice_text = ""
         if notice_text is not None:
+            if notice_text.lower() == "none":
+                notice_text = ""
             if len(notice_text) == 0:
                 update_dict["notice_text"] = None
             else:
