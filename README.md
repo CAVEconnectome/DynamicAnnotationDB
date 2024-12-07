@@ -156,20 +156,16 @@ Run tests with pytest:
 # Install test requirements
 pip install -r test_requirements.txt
 
-# Run tests
+# Run tests (requires a PostgreSQL with PostGIS extension running)
 pytest
 
-# Run tests with a temporary Docker PostgreSQL instance
+# Run tests with a temporary Docker PostgreSQL instance (preferred local testing method)
 pytest --docker=true
 ```
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Support
 
