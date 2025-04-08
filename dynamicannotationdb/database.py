@@ -17,7 +17,6 @@ from .schema import DynamicSchemaClient
 
 class DynamicAnnotationDB:
     def __init__(self, sql_url: str, pool_size=5, max_overflow=5) -> None:
-
         self._cached_session = None
         self._cached_tables = {}
         self._engine = create_engine(
@@ -81,33 +80,66 @@ class DynamicAnnotationDB:
         self.base.metadata.reflect(bind=self.engine)
         return self.base.metadata.tables[table_name]
 
+    def does_matview_exist(self, mv_name: str) -> bool:
+        """Check if a materialized view of the given name exists in Postgres."""
+        with self.session_scope() as session:
+            result = session.execute(
+                """
+                SELECT 1
+                FROM pg_catalog.pg_matviews
+                WHERE matviewname = :mv_name
+                """,
+                {"mv_name": mv_name},
+            ).scalar()
+            return bool(result)
+
     def get_unique_string_values(self, table_name: str):
-        """Get unique string values for a given table
+        """
+        Return a dictionary of { column_name: [distinct values] }
+        by querying either the matching MV or the base table.
+        """
+        mv_name = f"{table_name}_mv"  # or whatever name you used
 
-        Parameters
-        ----------
-        table_name : str
-            name of table contained within the aligned_volume database
+        # If the specialized MV exists, query it;
+        # otherwise, fall back to the main table.
+        if self.does_matview_exist(mv_name):
+            return self._get_unique_values_from_matview(mv_name)
+        else:
+            return self._get_unique_values_from_base_table(table_name)
 
-        Returns
-        -------
-        dict
-            dictionary of column names and unique values
+    def _get_unique_values_from_matview(self, mv_name: str):
+        """
+        Example logic if your MV has the shape: (column_name, col_value).
+        We'll group values by 'column_name'.
+        """
+        with self.session_scope() as session:
+            rows = session.execute(f"SELECT column_name, col_value FROM {mv_name}")
+            # rows is an iterator of (column_name, col_value)
+            unique_values = {}
+            for col_name, val in rows:
+                unique_values.setdefault(col_name, []).append(val)
+            return unique_values
+
+    def _get_unique_values_from_base_table(self, table_name: str):
+        """
+        Your existing fallback approach – scanning each column's distinct values
+        from the real table if no MV is found.
         """
         model = self.cached_table(table_name)
 
         unique_values = {}
         with self.session_scope() as session:
             for column_name in model.__table__.columns.keys():
-
-                # if the column is a string
+                # Check if it's string
                 try:
                     python_type = model.__table__.columns[column_name].type.python_type
                 except NotImplementedError:
                     python_type = None
+
                 if python_type == str:
                     query = session.query(getattr(model, column_name)).distinct()
                     unique_values[column_name] = [row[0] for row in query.all()]
+
         return unique_values
 
     def get_views(self, datastack_name: str):
@@ -134,7 +166,6 @@ class DynamicAnnotationDB:
         data = getattr(AnnoMetadata, filter_col) if filter_col else AnnoMetadata
         with self.session_scope() as session:
             if filter_col and data:
-
                 query = session.query(data).filter(
                     AnnoMetadata.table_name == table_name
                 )
