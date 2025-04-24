@@ -1,8 +1,9 @@
 import logging
 import pytest
-
 from emannotationschemas import type_mapping
 from emannotationschemas.schemas.base import ReferenceAnnotation
+
+from dynamicannotationdb.errors import UpdateAnnotationError
 
 
 def test_create_table(dadb_interface, annotation_metadata):
@@ -257,12 +258,19 @@ def test_update_reference_annotation(dadb_interface, annotation_metadata):
         "id": 1,
         "bouton_type": "basmati",
     }
-
+    with pytest.raises(UpdateAnnotationError) as e:
+        # UpdateAnnotationError('Annotation with ID 1 has already been superseded by annotation ID 2, update annotation ID 2 instead')
+        update_map = dadb_interface.annotation.update_annotation(table_name, test_data)
+        
+    # lets try again with the correct id
+    test_data = {
+        "id": 2,
+        "bouton_type": "basmati",
+    }
     update_map = dadb_interface.annotation.update_annotation(table_name, test_data)
-
-    assert update_map == {1: 2}
+    assert update_map == {2: 3}
     # return values from newly updated row
-    test_data = dadb_interface.annotation.get_annotations(table_name, [2])
+    test_data = dadb_interface.annotation.get_annotations(table_name, [3])
     assert test_data[0]["bouton_type"] == "basmati"
 
 
@@ -273,19 +281,25 @@ def test_nested_update_reference_annotation(dadb_interface, annotation_metadata)
         "tag": "here is a updated tag",
         "id": 1,
     }
+    with pytest.raises(UpdateAnnotationError) as e:
+        update_map = dadb_interface.annotation.update_annotation(table_name, test_data)
 
+    test_data = {
+        "tag": "here is a updated tag",
+        "id": 3,
+    }
     update_map = dadb_interface.annotation.update_annotation(table_name, test_data)
 
-    assert update_map == {1: 2}
+    assert update_map == {3: 4}
     # return values from newly updated row
-    test_data = dadb_interface.annotation.get_annotations(table_name, [2])
+    test_data = dadb_interface.annotation.get_annotations(table_name, [4])
     assert test_data[0]["tag"] == "here is a updated tag"
 
 
 def test_delete_reference_annotation(dadb_interface, annotation_metadata):
     table_name = "presynaptic_bouton_types"
 
-    ids_to_delete = [2]
+    ids_to_delete = [1,2]
     is_deleted = dadb_interface.annotation.delete_annotation(table_name, ids_to_delete)
 
     assert is_deleted == ids_to_delete
