@@ -223,8 +223,11 @@ class DynamicMigration:
             return None
         return fkey_mappings
 
-    def add_cascade_delete_to_fkey(self, table: Table, dry_run: bool = True):
-        table_name = table.name
+    def add_cascade_delete_to_fkey(self, table: Table or str, dry_run: bool = True):
+        if isinstance(table, str):
+            table_name = table
+        else:
+            table_name = table.table
         fkeys_to_drop = {}
         fkey_to_add = {}
         for fk in self.target_inspector.get_foreign_keys(table_name):
