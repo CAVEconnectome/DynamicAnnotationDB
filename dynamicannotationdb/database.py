@@ -98,7 +98,7 @@ class DynamicAnnotationDB:
             if not hasattr(session, 'bind') or session.bind is None:
                 return False
             # Try a simple query to test the connection
-            session.execute("SELECT 1")
+            session.get_bind().execute("SELECT 1")
             return True
         except Exception:
             return False
