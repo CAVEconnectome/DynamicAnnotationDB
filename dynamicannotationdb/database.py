@@ -81,8 +81,16 @@ class DynamicAnnotationDB:
             # The session will be reused for subsequent requests
             pass
 
-    def _is_session_valid(self, session):
-        """Check if a SQLAlchemy session is valid and can be used."""
+    def _is_session_valid(self, session: Session) -> bool:
+        """
+        Check if a SQLAlchemy session is valid and can be used.
+
+        Args:
+            session (Session): The SQLAlchemy session to validate.
+
+        Returns:
+            bool: True if the session is valid, False otherwise.
+        """
         if session is None:
             return False
         try:
