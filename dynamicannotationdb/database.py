@@ -55,15 +55,53 @@ class DynamicAnnotationDB:
 
     @contextmanager
     def session_scope(self):
+        session = None
         try:
-            yield self.cached_session
+            # Validate and recreate session if needed
+            if self._cached_session is None or not self._is_session_valid(self._cached_session):
+                if self._cached_session is not None:
+                    try:
+                        self._cached_session.close()
+                    except Exception:
+                        pass
+                self._cached_session = None
+            
+            session = self.cached_session
+            yield session
         except Exception as e:
-            self.cached_session.rollback()
+            if session is not None:
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
             logging.exception(f"SQL Error: {e}")
             raise e
         finally:
-            self.cached_session.close()
-        self._cached_session = None
+            # Don't close the session - let connection pool manage it
+            # The session will be reused for subsequent requests
+            pass
+
+    def _is_session_valid(self, session: Session) -> bool:
+        """
+        Check if a SQLAlchemy session is valid and can be used.
+
+        Args:
+            session (Session): The SQLAlchemy session to validate.
+
+        Returns:
+            bool: True if the session is valid, False otherwise.
+        """
+        if session is None:
+            return False
+        try:
+            # Check if session is bound and connection is alive
+            if not hasattr(session, 'bind') or session.bind is None:
+                return False
+            # Try a simple query to test the connection
+            session.get_bind().execute("SELECT 1")
+            return True
+        except Exception:
+            return False
 
     def commit_session(self):
         try:
@@ -72,9 +110,17 @@ class DynamicAnnotationDB:
             self.cached_session.rollback()
             logging.exception(f"SQL Error: {e}")
             raise e
-        finally:
-            self.cached_session.close()
-        self._cached_session = None
+        # Don't close or reset the session - keep it for reuse
+
+    def close_session(self):
+        """Explicitly close the cached session (for cleanup/shutdown)."""
+        if self._cached_session is not None:
+            try:
+                self._cached_session.close()
+            except Exception as e:
+                logging.exception(f"Error closing session: {e}")
+            finally:
+                self._cached_session = None
 
     def get_table_sql_metadata(self, table_name: str):
         self.base.metadata.reflect(bind=self.engine)
