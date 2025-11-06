@@ -350,7 +350,8 @@ class DynamicAnnotationDB:
             )
         return existing_tables
 
-    def _get_existing_table_names(self, filter_valid: bool = False) -> List[str]:
+    def _get_existing_table_names(self, filter_valid: bool = False,
+                                  filter_timestamp: datetime.datetime = None) -> List[str]:
         """Collects table_names keys of existing tables
 
         Returns
@@ -362,6 +363,10 @@ class DynamicAnnotationDB:
             stmt = session.query(AnnoMetadata)
             if filter_valid:
                 stmt = stmt.filter(AnnoMetadata.valid == True)
+            if filter_timestamp:
+                stmt = stmt.filter(AnnoMetadata.created <= filter_timestamp)
+                stmt = stmt.filter(or_(AnnoMetadata.deleted > filter_timestamp,
+                                       AnnoMetadata.deleted == None))
             metadata = stmt.all()
             return [m.table_name for m in metadata]
 
