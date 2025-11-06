@@ -6,7 +6,19 @@ from sqlalchemy import Table
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 
 from emannotationschemas import type_mapping
+from dynamicannotationdb.errors import TableAlreadyExists
 
+@pytest.fixture(scope="session")
+def deleted_table_metadata():
+    yield {
+        "aligned_volume": "test_volume",
+        "table_name": "deleted_table_test",
+        "schema_type": "synapse",
+        "pcg_table_name": "test_pcg",
+        "voxel_resolution_x": 4.0,
+        "voxel_resolution_y": 4.0,
+        "voxel_resolution_z": 40.0,
+    }
 
 def test_get_table_metadata(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]
@@ -65,6 +77,44 @@ def test__get_existing_table_ids(dadb_interface):
     table_names = dadb_interface.database._get_existing_table_names()
     assert isinstance(table_names, list)
 
+def test__get_existing_table_ids_with_filters(dadb_interface, deleted_table_metadata):
+    # without filters
+    before_creation = datetime.datetime.utcnow()
+    dadb_interface.annotation.create_table(
+        deleted_table_metadata["table_name"],
+        deleted_table_metadata["schema_type"],
+        description="some description",
+        user_id="foo@bar.com",
+        voxel_resolution_x=deleted_table_metadata["voxel_resolution_x"],
+        voxel_resolution_y=deleted_table_metadata["voxel_resolution_y"],
+        voxel_resolution_z=deleted_table_metadata["voxel_resolution_z"])
+    
+    table_names = dadb_interface.database._get_existing_table_names(filter_timestamp=before_creation)
+    assert isinstance(table_names, list)
+    assert deleted_table_metadata["table_name"] not in table_names
+
+    after_creation = datetime.datetime.utcnow()
+    table_names = dadb_interface.database._get_existing_table_names(filter_timestamp=after_creation)
+    assert deleted_table_metadata["table_name"] in table_names
+
+    dadb_interface.annotation.delete_table(deleted_table_metadata["table_name"])
+    after_deletion = datetime.datetime.utcnow()
+    table_names = dadb_interface.database._get_existing_table_names(filter_timestamp=after_deletion)
+    assert deleted_table_metadata["table_name"] not in table_names
+    
+    table_names = dadb_interface.database._get_existing_table_names(filter_timestamp=after_creation)
+    assert deleted_table_metadata["table_name"] in table_names
+
+    # make sure i can't create it after i delete it
+    with pytest.raises(TableAlreadyExists):
+        dadb_interface.annotation.create_table(
+            deleted_table_metadata["table_name"],
+            deleted_table_metadata["schema_type"],
+            description="some description",
+            user_id="foo@bar.com",
+            voxel_resolution_x=deleted_table_metadata["voxel_resolution_x"],
+            voxel_resolution_y=deleted_table_metadata["voxel_resolution_y"],
+            voxel_resolution_z=deleted_table_metadata["voxel_resolution_z"])
 
 def test_get_table_row_count(dadb_interface, annotation_metadata):
     table_name = annotation_metadata["table_name"]
