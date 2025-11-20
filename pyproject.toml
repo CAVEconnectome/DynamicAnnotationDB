@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "DynamicAnnotationDB"
+version = "5.13.1"
+description = "Annotation Database pendant to the chunkedgraph"
+readme = "README.md"
+authors = [
+    {name = "Sven Dorkenwald", email = "sdorkenw@princeton.edu"},
+    {name = "Derrick Brittain"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "marshmallow==3.5.1",
+    "emannotationschemas>=5.4.0",
+    "sqlalchemy<1.4",
+    "psycopg2-binary",
+    "geoalchemy2",
+    "pytz",
+    "alembic",
+    "shapely",
+    "jsonschema<4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/seung-lab/DynamicAnnotationDB"
+Repository = "https://github.com/seung-lab/DynamicAnnotationDB"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "docker"
+]
+
+[tool.pytest.ini_options]
+addopts = "--cov dynamicannotationdb --cov-report html --junitxml=test-reports/test.xml"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dynamicannotationdb*"]
