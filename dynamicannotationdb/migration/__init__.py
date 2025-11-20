@@ -1,4 +1,4 @@
-__version__ = "5.13.1"
+__version__ = "5.14.0"
 
 from dynamicannotationdb.migration.migrate import DynamicMigration
 from dynamicannotationdb.migration.alembic.run import run_alembic_migration
