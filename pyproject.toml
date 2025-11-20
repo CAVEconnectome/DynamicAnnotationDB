@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "DynamicAnnotationDB"
-version = "5.13.1"
+version = "5.14.0"
 description = "Annotation Database pendant to the chunkedgraph"
 readme = "README.md"
 authors = [
