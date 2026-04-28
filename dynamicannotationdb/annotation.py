@@ -255,6 +255,8 @@ class DynamicAnnotationClient:
         annotations : list of dict
             a list of dicts with the annotations
                                 that meet the schema
+        user_id : str, optional
+            user id to fill in any auto_user_id fields in the schema, by default None
 
         Returns
         -------
