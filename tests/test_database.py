@@ -3,7 +3,7 @@ import datetime
 import pytest
 
 from sqlalchemy import Table
-from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from sqlalchemy.orm import DeclarativeMeta
 
 from emannotationschemas import type_mapping
 from dynamicannotationdb.errors import TableAlreadyExists
