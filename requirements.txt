@@ -1,5 +1,5 @@
 marshmallow==3.5.1
-emannotationschemas>=5.26.0
+emannotationschemas>=5.26.1
 sqlalchemy>=1.4,<2
 psycopg2-binary
 geoalchemy2
