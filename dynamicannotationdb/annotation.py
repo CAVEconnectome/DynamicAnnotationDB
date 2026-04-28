@@ -257,6 +257,7 @@ class DynamicAnnotationClient:
                                 that meet the schema
         user_id : str, optional
             user id to fill in any auto_user_id fields in the schema, by default None
+            note: if user_id is None, auto_user_id fields will not be filled and will need to be provided in the annotation dicts
 
         Returns
         -------
