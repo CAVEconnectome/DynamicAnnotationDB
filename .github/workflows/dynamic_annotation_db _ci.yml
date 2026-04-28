@@ -8,7 +8,10 @@ on:
     branches: master
     paths:
     - 'dynamicannotationdb/**'
-    - 'tests/**'  
+    - 'tests/**'
+    - 'requirements.txt'
+    - 'test_requirements.txt'
+    - 'pyproject.toml'
   pull_request:
     branches: master
 
