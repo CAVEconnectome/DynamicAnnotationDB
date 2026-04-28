@@ -574,7 +574,7 @@ wheels = [
 
 [[package]]
 name = "dynamicannotationdb"
-version = "5.13.1"
+version = "5.14.1"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -601,7 +601,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic" },
-    { name = "emannotationschemas", specifier = ">=5.4.0" },
+    { name = "emannotationschemas", specifier = ">=5.26.0" },
     { name = "geoalchemy2" },
     { name = "jsonschema", specifier = "<4.0" },
     { name = "marshmallow", specifier = "==3.5.1" },
@@ -620,7 +620,7 @@ dev = [
 
 [[package]]
 name = "emannotationschemas"
-version = "5.24.12"
+version = "5.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "flask-cors" },
@@ -633,7 +633,7 @@ dependencies = [
     { name = "shapely" },
     { name = "sqlalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/60/2ccf0c3aa7d47f2fbda5d02ba023df5d88788ec1c579d7597702fca982f6/emannotationschemas-5.24.12.tar.gz", hash = "sha256:bd36cf0db1570e5098e3701c714ca1be20bb1de777f7624a9d37f0c805d3a5d0", size = 38327, upload-time = "2025-08-29T16:59:05.613Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/14/78090dfcc1ceef8abc207438fe768b15697db08655e55c642c0aeb71c7df/emannotationschemas-5.26.0.tar.gz", hash = "sha256:ab4ce6b699762396b5f0ad3f2134015fc4e4085f41292b14e598aeaeda9437b5", size = 39568, upload-time = "2026-04-28T16:24:13.056Z" }
 
 [[package]]
 name = "exceptiongroup"

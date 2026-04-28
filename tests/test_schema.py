@@ -1,7 +1,7 @@
 import marshmallow
 from emannotationschemas.errors import UnknownAnnotationTypeException
 import pytest
-from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from sqlalchemy.orm import DeclarativeMeta
 
 
 def test_get_schema(dadb_interface):

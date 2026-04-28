@@ -20,8 +20,8 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
     "marshmallow==3.5.1",
-    "emannotationschemas>=5.26.0",
-    "sqlalchemy<1.4",
+    "emannotationschemas>=5.26.3",
+    "sqlalchemy>=1.4,<2",
     "psycopg2-binary",
     "geoalchemy2",
     "pytz",

@@ -5,7 +5,7 @@ import datetime
 
 from sqlalchemy import create_engine, func, inspect, or_
 from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from sqlalchemy.orm import DeclarativeMeta
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.schema import MetaData
