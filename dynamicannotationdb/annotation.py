@@ -245,7 +245,7 @@ class DynamicAnnotationClient:
         self.db.commit_session()
         return True
 
-    def insert_annotations(self, table_name: str, annotations: List[dict]):
+    def insert_annotations(self, table_name: str, annotations: List[dict], user_id=None):
         """Insert some annotations.
 
         Parameters
@@ -273,8 +273,12 @@ class DynamicAnnotationClient:
 
         schema_type, AnnotationModel = self._load_model(table_name)
 
+        auto_user_fields = self.schema.get_auto_user_id_fields(schema_type) if user_id is not None else []
+
         formatted_anno_data = []
         for annotation in annotations:
+            for field in auto_user_fields:
+                annotation[field] = user_id
 
             annotation_data, __ = self.schema.split_flattened_schema_data(
                 schema_type, annotation
@@ -347,7 +351,7 @@ class DynamicAnnotationClient:
             logging.exception(e)
             raise NoAnnotationsFoundWithID(annotation_ids) from e
 
-    def update_annotation(self, table_name: str, annotation: dict) -> str:
+    def update_annotation(self, table_name: str, annotation: dict, user_id=None) -> str:
         """Update an annotation
 
         Parameters
@@ -373,6 +377,8 @@ class DynamicAnnotationClient:
             return "Annotation requires an 'id' to update targeted row"
         schema_type, AnnotationModel = self._load_model(table_name)
 
+        auto_user_fields = self.schema.get_auto_user_id_fields(schema_type) if user_id is not None else []
+
         try:
             old_anno = (
                 self.db.cached_session.query(AnnotationModel)
@@ -391,6 +397,8 @@ class DynamicAnnotationClient:
             for column in old_anno.__table__.columns
         }
         updated_data = {**old_data, **annotation}
+        for field in auto_user_fields:
+            updated_data[field] = user_id
 
         new_annotation, __ = self.schema.split_flattened_schema_data(
             schema_type, updated_data

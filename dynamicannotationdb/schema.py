@@ -3,7 +3,7 @@ from typing import Sequence, Tuple
 from emannotationschemas import get_schema
 from emannotationschemas import models as em_models
 from emannotationschemas.flatten import create_flattened_schema, flatten_dict
-from emannotationschemas.schemas.base import ReferenceAnnotation, SegmentationField
+from emannotationschemas.schemas.base import AutoUserIdField, ReferenceAnnotation, SegmentationField
 from marshmallow import EXCLUDE, Schema
 
 from .errors import SelfReferenceTableError, TableNameNotFound
@@ -160,6 +160,17 @@ class DynamicSchemaClient:
     @staticmethod
     def flattened_schema_data(data):
         return flatten_dict(data)
+
+    @staticmethod
+    def get_auto_user_id_fields(schema_type: str) -> list:
+        """Return field names that should be auto-populated with the authenticated user's ID."""
+        schema = get_schema(schema_type)
+        flat_schema = create_flattened_schema(schema)
+        return [
+            name
+            for name, field in flat_schema._declared_fields.items()
+            if isinstance(field, AutoUserIdField)
+        ]
 
     @staticmethod
     def is_segmentation_table_required(schema_type: str) -> bool:
