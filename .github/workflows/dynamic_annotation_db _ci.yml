@@ -12,6 +12,7 @@ on:
     - 'requirements.txt'
     - 'test_requirements.txt'
     - 'pyproject.toml'
+    - '.github/workflows/dynamic_annotation_db%20_ci.yml'
   pull_request:
     branches: master
 
