@@ -82,6 +82,29 @@ def test_create_reference_table(dadb_interface, annotation_metadata):
     assert table_info["reference_table"] == "anno_test"
 
 
+def test_create_reference_table_cold_metadata(dadb_interface, annotation_metadata):
+    """Target table's model absent from Base.metadata (e.g. a fresh uwsgi worker)."""
+    db = dadb_interface.database
+    target = annotation_metadata["table_name"]
+    db.base.metadata.remove(db.base.metadata.tables[target])
+    db._cached_tables.pop(target, None)
+    assert target not in db.base.metadata.tables
+
+    table_name = "cold_reference_table"
+    table = dadb_interface.annotation.create_table(
+        table_name,
+        "presynaptic_bouton_type",
+        description="some description",
+        user_id="foo@bar.com",
+        voxel_resolution_x=annotation_metadata["voxel_resolution_x"],
+        voxel_resolution_y=annotation_metadata["voxel_resolution_y"],
+        voxel_resolution_z=annotation_metadata["voxel_resolution_z"],
+        table_metadata={"reference_table": target, "track_target_id_updates": True},
+    )
+    assert table == table_name
+    assert db.get_table_metadata(table)["reference_table"] == target
+
+
 def test_create_nested_reference_table(dadb_interface, annotation_metadata):
     table_name = "reference_tag"
     schema_type = "reference_tag"
