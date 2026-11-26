@@ -102,6 +102,16 @@ class DynamicAnnotationClient:
         else:
             reference_table = None
 
+        if reference_table and reference_table not in self.db.base.metadata.tables:
+            # The new table's foreign key is resolved by name against the
+            # in-process SQLAlchemy metadata, so the target table's model has
+            # to be registered there before the DDL is compiled. It only is
+            # if this process has already used the target table.
+            # Checks Base.metadata directly rather than using cached_table(),
+            # which short-circuits on the per-instance _cached_tables dict
+            # that can be out of step with the metadata.
+            self.db._get_model_from_table_name(reference_table)
+
         AnnotationModel = self.schema.create_annotation_model(
             table_name,
             schema_type,
